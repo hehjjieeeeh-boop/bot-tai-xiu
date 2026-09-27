@@ -132,5 +132,18 @@ async def addxu(interaction:discord.Interaction, nguoi_nhan:discord.Member, so_t
     except Exception as e:
         print("addxu err",e); await interaction.followup.send("❌ Lỗi")
 
-bot.run(TOKEN)
+cau_history = []
+
+@bot.tree.command(name="cautaixiu",description="Xem 10 cau tai xiu gan nhat")
+async def cautaixiu(interaction:discord.Interaction):
+    await interaction.response.defer()
+    if not cau_history:
+        await interaction.followup.send("Chua co cau nao.")
+        return
+    last_10=cau_history[-10:][::-1]
+    msg="**10 cau gan nhat:**\n"
+    for i,c in enumerate(last_10,1):
+        msg+=f"{i}. {c}\n"
+    await interaction.followup.send(msg)
+    bot.run(TOKEN)
 
