@@ -100,7 +100,7 @@ async def taixiu(interaction:discord.Interaction,tien:int,lua_chon:str):
         else: balances[uid]=bal-tien
         save()
         icon="✅" if win else "❌"
-        await interaction.followup.send(f"🎲 {x1}-{x2}-{x3} (Tổng {tong}) => {kq}\n{icon} {'Thắng' if win else 'Thua'} {tien:,} xu\n💰 Dư: {balances[uid]:,} xu")
+        await interaction.followup.send(f"🎲 {x1}-{x2}-{x3} (Tổng {tong}) => {kq}\n{icon} {'Thắng' if win else 'Thua'} {fmt(tien)} xu\n💰 Dư: {fmt(balances[uid])} xu")
     except Exception as e:
         print("tx err",e)
         await interaction.followup.send("❌ Lỗi, thử lại")
