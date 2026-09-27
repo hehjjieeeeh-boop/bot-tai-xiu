@@ -146,5 +146,5 @@ async def cautaixiu(interaction:discord.Interaction):
     for i,c in enumerate(last_10,1):
         msg+=f"{i}. {c}\n"
     await interaction.followup.send(msg)
-    bot.run(TOKEN)
+bot.run(TOKEN)
 
