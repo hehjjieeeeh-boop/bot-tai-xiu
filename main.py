@@ -66,7 +66,7 @@ async def sodu(interaction:discord.Interaction):
     except Exception as e:
         print(e)
         await interaction.followup.send("❌ Lỗi")
-
+cau_history = []
 @bot.tree.command(name="taixiu",description="Cuoc tai xiu")
 @discord.app_commands.describe(tien="So tien cuoc",lua_chon="tai hoac xiu")
 @discord.app_commands.choices(lua_chon=[discord.app_commands.Choice(name="Tài",value="tai"),discord.app_commands.Choice(name="Xỉu",value="xiu")])
@@ -87,6 +87,7 @@ async def taixiu(interaction:discord.Interaction,tien:int,lua_chon:str):
             real="xiu" if 4<=tong<=10 else "tai"
             win=(real==lua_chon)
             kq="Xỉu" if real=="xiu" else "Tài"
+        cau_history.append(kq)
         if win: balances[uid]=bal+tien
         else: balances[uid]=bal-tien
         save()
@@ -132,7 +133,7 @@ async def addxu(interaction:discord.Interaction, nguoi_nhan:discord.Member, so_t
     except Exception as e:
         print("addxu err",e); await interaction.followup.send("❌ Lỗi")
 
-cau_history = []
+
 
 @bot.tree.command(name="cautaixiu",description="Xem 10 cau tai xiu gan nhat")
 async def cautaixiu(interaction:discord.Interaction):
