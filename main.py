@@ -1,12 +1,10 @@
-import discord, random, json, os, re
+import discord, random, json, os, re, time
 from discord.ext import commands
 
 TOKEN = os.getenv("DISCORD_TOKEN")
-
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ---------- utils ----------
 def parse_tien(s):
     s=str(s).lower().strip().replace(",","")
     m=re.match(r"^(\d+(\.\d+)?)(k|m)?$", s)
@@ -26,33 +24,35 @@ def fmt(n):
         return f"{s}k"
     return str(n)
 
-# ---------- data ----------
 balances={}
 cau_history=[]
+last_claim={}
 DB="data.json"
+
 def save():
-    with open(DB,"w") as f: json.dump({"balances":balances,"cau":cau_history[-20:]},f)
+    with open(DB,"w") as f:
+        json.dump({"balances":balances,"cau":cau_history[-20:],"last":last_claim},f)
+
 def load():
-    global balances,cau_history
+    global balances,cau_history,last_claim
     if os.path.exists(DB):
         try:
             d=json.load(open(DB))
-            balances=d.get("balances",{}); cau_history=d.get("cau",[])
+            balances=d.get("balances",{})
+            cau_history=d.get("cau",[])
+            last_claim=d.get("last",{})
         except: pass
 load()
 
-# ---------- events ----------
 @bot.event
 async def on_ready():
     await bot.tree.sync()
     print(f"Online {bot.user}")
 
-# ---------- commands ----------
 @bot.tree.command(name="taixiu",description="Chơi tài xỉu")
 async def taixiu(interaction: discord.Interaction, tien: str, lua_chon: str):
     await interaction.response.defer()
-    try:
-        tien_v=parse_tien(tien)
+    try: tien_v=parse_tien(tien)
     except:
         await interaction.followup.send("❌ Tiền không hợp lệ! VD: 10k, 1m")
         return
@@ -89,8 +89,7 @@ async def taixiu(interaction: discord.Interaction, tien: str, lua_chon: str):
 @bot.tree.command(name="soxu",description="Xem số xu")
 async def soxu(interaction: discord.Interaction):
     uid=str(interaction.user.id)
-    bal=balances.get(uid,10000)
-    await interaction.response.send_message(f"💰 Bạn có {fmt(bal)} xu")
+    await interaction.response.send_message(f"💰 Bạn có {fmt(balances.get(uid,10000))} xu")
 
 @bot.tree.command(name="chuyentien",description="Chuyen tien cho nguoi khac")
 async def chuyentien(interaction: discord.Interaction, nguoi: discord.Member, tien: str):
@@ -109,11 +108,9 @@ async def chuyentien(interaction: discord.Interaction, nguoi: discord.Member, ti
     save()
     await interaction.followup.send(f"✅ Đã chuyển {fmt(tien_v)} xu cho {nguoi.display_name}\n💰 Dư: {fmt(balances[uid])} xu")
 
-@bot.tree.command(name="daily",description="Nhận xu hàng ngày")
-async def daily(interaction: discord.Interaction):
+@bot.tree.command(name="nhanxu",description="Nhận 50k xu mỗi 24h")
+async def nhanxu(interaction: discord.Interaction):
     uid=str(interaction.user.id)
-    balances[uid]=balances.get(uid,10000)+5000
-    save()
-    await interaction.response.send_message(f"🎁 +{fmt(5000)} xu! Dư: {fmt(balances[uid])} xu")
-
-bot.run(TOKEN)
+    now=int(time.time())
+    last=last_claim.get(uid,0)
+    conlai=864
