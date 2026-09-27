@@ -100,12 +100,11 @@ def fmt(n):
 @discord.app_commands.choices(lua_chon=[discord.app_commands.Choice(name="Tài",value="tai"),discord.app_commands.Choice(name="Xỉu",value="xiu")])
 async def taixiu(interaction:discord.Interaction,tien:str,lua_chon:str):
         await interaction.response.defer(ephemeral=True)
-        try:
-            try: tien = parse_tien(tien)
-            except:
-                await interaction.followup.send("❌ Tiền không hợp lệ! VD: 10k, 1m"); return
-            uid=str(interaction.user.id)
-            bal=balances.get(uid,0)
+        try: tien = parse_tien(tien)
+        except:
+            await interaction.followup.send("❌ Tiền không hợp lệ! VD: 10k, 1m"); return
+        uid=str(interaction.user.id)
+        bal=balances.get(uid,0)
         if tien<=0:
             await interaction.followup.send("❌ Tiền phải >0"); return
         if bal<tien:
