@@ -67,6 +67,14 @@ async def sodu(interaction:discord.Interaction):
         print(e)
         await interaction.followup.send("❌ Lỗi")
 cau_history = []
+def fmt(n):
+    n=int(n)
+    if n>=1000000:
+        s=f"{n/1000000:.1f}";return s.rstrip('0').rstrip('.')+'M'
+    if n>=1000:
+        s=f"{n/1000:.1f}";return s.rstrip('0').rstrip('.')+'k'
+    return str(n)
+    
 @bot.tree.command(name="taixiu",description="Cuoc tai xiu")
 @discord.app_commands.describe(tien="So tien cuoc",lua_chon="tai hoac xiu")
 @discord.app_commands.choices(lua_chon=[discord.app_commands.Choice(name="Tài",value="tai"),discord.app_commands.Choice(name="Xỉu",value="xiu")])
