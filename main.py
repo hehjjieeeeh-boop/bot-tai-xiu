@@ -34,6 +34,7 @@ debts={}; vay_log={}; banned_until={}
 def save():
     with open(DB,"w",encoding="utf-8") as f:
         json.dump({"balances":balances,"cau":cau_history[-30:],"last":last_claim,"debts":debts,"vay_log":vay_log,"banned":banned_until},f)
+
 def load():
     global balances,cau_history,last_claim,debts,vay_log,banned_until
     if os.path.exists(DB):
@@ -46,16 +47,6 @@ def load():
 load()
 
 def get_bal(uid): return balances.get(str(uid),10000)
-def is_banned(uid):
-    uid=str(uid)
-    unb=banned_until.get(uid,0)
-    if unb>int(time.time()):
-        return True
-    # hết ban -> tự động xoá nợ nếu có flag
-    if unb!=0 and unb<=int(time.time()):
-        # nếu bị ban do không trả được, đã xoá nợ lúc ban
-        banned_until.pop(uid,None); save()
-    return False
 
 @bot.event
 async def on_ready():
@@ -65,14 +56,11 @@ async def on_ready():
 @bot.tree.command(name="taixiu",description="Choi tai xiu")
 async def taixiu(interaction: discord.Interaction, tien: str, lua_chon: str):
     await interaction.response.defer()
-    uid=str(interaction.user.id)
-    # check ban
+    uid=str(interaction.user.id); now=int(time.time())
     bt=banned_until.get(uid,0)
-    now=int(time.time())
     if bt>now:
         conlai=bt-now; h=conlai//3600; m=(conlai%3600)//60
-        await interaction.followup.send(f"🚫 Ban bi cam choi {h}h {m}p vi no xu!")
-        return
+        await interaction.followup.send(f"🚫 Bi cam choi {h}h {m}p!"); return
     if bt!=0 and bt<=now:
         banned_until.pop(uid,None); save()
     try: tien_v=parse_tien(tien)
@@ -97,18 +85,16 @@ async def taixiu(interaction: discord.Interaction, tien: str, lua_chon: str):
     balances[uid]=bal+tien_v if win else bal-tien_v
     save()
     icon="✅ THANG" if win else "❌ THUA"
-    cau_str=" ".join(cau_history[-10:])
-    await interaction.followup.send(f"🎲 {x1}-{x2}-{x3} (Tong {tong}) => **{kq}**\n{icon} `{fmt(tien_v)} xu`\n💰 Du: **{fmt(balances[uid])} xu**\n📈 Cau: {cau_str}")
+    await interaction.followup.send(f"🎲 {x1}-{x2}-{x3} (Tong {tong}) => **{kq}**\n{icon} `{fmt(tien_v)} xu`\n💰 Du: **{fmt(balances[uid])} xu**\n📈 Cau: {' '.join(cau_history[-10:])}")
 
 @bot.tree.command(name="soxu",description="Xem so xu")
 async def soxu(interaction: discord.Interaction):
-    uid=str(interaction.user.id)
-    debt=int(debts.get(uid,0))
+    uid=str(interaction.user.id); debt=int(debts.get(uid,0))
     msg=f"💰 Ban co **{fmt(get_bal(uid))} xu**"
     if debt>0: msg+=f"\n💸 No: **{fmt(debt)} xu**"
     await interaction.response.send_message(msg)
 
-@bot.tree.command(name="chuyentien",description="Chuyen xu")
+@bot.tree.command(name="chuyentien",description="Chuyen xu cho nguoi khac")
 async def chuyentien(interaction: discord.Interaction, nguoi: discord.Member, tien: str):
     await interaction.response.defer()
     try: tien_v=parse_tien(tien)
@@ -130,17 +116,17 @@ async def nhanxu(interaction: discord.Interaction):
     last_claim[uid]=now; balances[uid]=get_bal(uid)+50000; save()
     await interaction.response.send_message(f"🎁 +**{fmt(50000)} xu**! Du: **{fmt(balances[uid])} xu**")
 
-@bot.tree.command(name="congxu",description="Cong xu (Admin)")
+@bot.tree.command(name="congxu",description="Cong xu (Admin only)")
 async def congxu(interaction: discord.Interaction, nguoi: discord.Member, tien: str):
     if str(interaction.user.id) not in ADMIN_IDS:
-        await interaction.response.send_message("❌ Ban khong co quyen!",ephemeral=True); return
+        await interaction.response.send_message("❌ Khong co quyen!",ephemeral=True); return
     try: tien_v=parse_tien(tien)
     except:
         await interaction.response.send_message("❌ Tien khong hop le!"); return
     tid=str(nguoi.id); balances[tid]=get_bal(tid)+tien_v; save()
     await interaction.response.send_message(f"✅ Da cong **{fmt(tien_v)} xu** cho {nguoi.mention}\n💰 Ho co: **{fmt(balances[tid])} xu**")
 
-@bot.tree.command(name="vayxu",description="Vay xu, toi da 10M/tuan")
+@bot.tree.command(name="vayxu",description="Vay xu toi da 10M/tuan")
 async def vayxu(interaction: discord.Interaction, tien: str):
     await interaction.response.defer()
     uid=str(interaction.user.id); now=int(time.time())
@@ -149,18 +135,13 @@ async def vayxu(interaction: discord.Interaction, tien: str):
         await interaction.followup.send("❌ Tien khong hop le!"); return
     if tien_v<=0:
         await interaction.followup.send("❌ Tien > 0"); return
-    # tính tổng đã vay trong 7 ngày
-    logs=vay_log.get(uid,[])
-    logs=[x for x in logs if now-x[0] < 7*86400]
+    logs=[x for x in vay_log.get(uid,[]) if now-x[0] < 7*86400]
     tong_tuan=sum(x[1] for x in logs)
-    if tong_tuan+tien_v > 10000000:
-        await interaction.followup.send(f"❌ Gioi han 10M/tuan! Da vay {fmt(tong_tuan)}/10M tuan nay")
-        return
+    if tong_tuan+tien_v>10000000:
+        await interaction.followup.send(f"❌ Gioi han 10M/tuan! Da vay {fmt(tong_tuan)}/10M"); return
     logs.append([now,tien_v]); vay_log[uid]=logs
-    balances[uid]=get_bal(uid)+tien_v
-    debts[uid]=int(debts.get(uid,0))+tien_v
-    save()
-    await interaction.followup.send(f"💸 Vay thanh cong **{fmt(tien_v)} xu**!\n💰 Du: **{fmt(balances[uid])} xu**\n💸 Tong no: **{fmt(debts[uid])} xu**")
+    balances[uid]=get_bal(uid)+tien_v; debts[uid]=int(debts.get(uid,0))+tien_v; save()
+    await interaction.followup.send(f"💸 Vay **{fmt(tien_v)} xu** thanh cong!\n💰 Du: **{fmt(balances[uid])} xu**\n💸 No: **{fmt(debts[uid])} xu**")
 
 @bot.tree.command(name="trano",description="Tra no xu")
 async def trano(interaction: discord.Interaction, tien: str):
@@ -168,37 +149,42 @@ async def trano(interaction: discord.Interaction, tien: str):
     uid=str(interaction.user.id); now=int(time.time())
     debt=int(debts.get(uid,0))
     if debt<=0:
-        await interaction.followup.send("✅ Ban khong co no!"); return
+        await interaction.followup.send("✅ Khong co no!"); return
     try: tien_v=parse_tien(tien)
     except:
         await interaction.followup.send("❌ Tien khong hop le!"); return
-    if tien_v<=0:
-        await interaction.followup.send("❌ Tien > 0"); return
     if tien_v>debt: tien_v=debt
     bal=get_bal(uid)
     if bal < tien_v:
-        # không đủ -> cấm 2 tiếng, xoá nợ
-        banned_until[uid]=now+7200
-        debts[uid]=0
-        save()
-        await interaction.followup.send(f"🚫 Khong du xu tra ({fmt(bal)}/{fmt(tien_v)})!\nBi cam choi 2 tieng va da xoa no **{fmt(debt)} xu**!")
-        return
-    balances[uid]=bal-tien_v
-    debts[uid]=debt-tien_v
-    save()
-    await interaction.followup.send(f"✅ Da tra **{fmt(tien_v)} xu**!\n💸 No con lai: **{fmt(debts[uid])} xu**\n💰 Du: **{fmt(balances[uid])} xu**")
+        banned_until[uid]=now+7200; debts[uid]=0; save()
+        await interaction.followup.send(f"🚫 Khong du xu tra! Bi cam 2 tieng va xoa no **{fmt(debt)} xu**!"); return
+    balances[uid]=bal-tien_v; debts[uid]=debt-tien_v; save()
+    await interaction.followup.send(f"✅ Da tra **{fmt(tien_v)} xu**!\n💸 No con: **{fmt(debts[uid])} xu**\n💰 Du: **{fmt(balances[uid])} xu**")
 
-@bot.tree.command(name="cau",description="Xem cau")
+@bot.tree.command(name="cau",description="Xem cau tai xiu")
 async def cau(interaction: discord.Interaction):
     if not cau_history:
         await interaction.response.send_message("Chua co cau"); return
-    await interaction.response.send_message(f"📈 Cau: `{' '.join(cau_history[-20:])}`")
+    await interaction.response.send_message(f"📈 Cau 20 tay: `{' '.join(cau_history[-20:])}`")
 
-@bot.tree.command(name="bxh",description="BXH giau nhat")
+@bot.tree.command(name="bxh",description="Top 10 nguoi giau nhat")
 async def bxh(interaction: discord.Interaction):
-    top=sorted(balances.items(),key=lambda x:x[1],reverse=True)[:10]
-    msg="🏆 **BXH**\n"
-    for i,(u,b) in enumerate(top,1): msg+=f"{i}. <@{u}> - {fmt(b)} xu\n"
-    await interaction.response.send_message(msg)
+    await interaction.response.defer()
+    if not balances:
+        await interaction.followup.send("Chua co du lieu!")
+        return
+    # lay top 10 theo so du, mac dinh 10k neu chua co
+    top = sorted(balances.items(), key=lambda x: x[1], reverse=True)[:10]
+    msg = "🏆 **TOP 10 NGUOI GIAU NHAT**\n\n"
+    medals = ["🥇","🥈","🥉","4.","5.","6.","7.","8.","9.","10."]
+    for i, (uid, bal) in enumerate(top):
+        try:
+            user = await bot.fetch_user(int(uid))
+            name = user.display_name
+        except:
+            name = f"User {uid[:6]}"
+        msg += f"{medals[i]} {name} - **{fmt(bal)} xu**\n"
+    msg += f"\n💰 Tong {len(balances)} nguoi choi"
+    await interaction.followup.send(msg)
 
 bot.run(TOKEN)
