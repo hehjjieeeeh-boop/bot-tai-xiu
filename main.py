@@ -17,7 +17,27 @@ def load():
                 balances=d.get("balances",{})
                 daily_cd=d.get("daily",{})
         except: pass
+def fmt(n: int) -> str:
+    if n >= 1000000000:
+        s = f"{n/1000000000:.1f}"
+        return s.rstrip('0').rstrip('.') + 'b'
+    if n >= 1000000:
+        s = f"{n/1000000:.1f}"
+        return s.rstrip('0').rstrip('.') + 'm'
+    if n >= 1000:
+        s = f"{n/1000:.1f}"
+        return s.rstrip('0').rstrip('.') + 'k'
+    return str(n)
+
+def parse_tien(s: str) -> int:
+    s = str(s).strip().lower().replace(',', '').replace('_', '')
+    multi = {'k': 1000, 'm': 1000000, 'b': 1000000000}
+    if s and s[-1] in multi:
+        return int(float(s[:-1]) * multi[s[-1]])
+    return int(float(s))
+    
 def save():
+    
     try:
         with open(DATA_FILE,"w",encoding="utf-8") as f:
             json.dump({"balances":balances,"daily":daily_cd},f)
@@ -78,15 +98,19 @@ def fmt(n):
 @bot.tree.command(name="taixiu",description="Cuoc tai xiu")
 @discord.app_commands.describe(tien="So tien cuoc",lua_chon="tai hoac xiu")
 @discord.app_commands.choices(lua_chon=[discord.app_commands.Choice(name="Tài",value="tai"),discord.app_commands.Choice(name="Xỉu",value="xiu")])
-async def taixiu(interaction:discord.Interaction,tien:int,lua_chon:str):
+async def taixiu(interaction:discord.Interaction,tien:str,lua_chon:str):
     await interaction.response.defer(ephemeral=False)
     try:
+                try:
+            tien = parse_tien(tien)
+        except:
+            await interaction.followup.send("❌ Nhập số tiền không hợp lệ! VD: 10k, 1m"); return
         uid=str(interaction.user.id)
         bal=balances.get(uid,0)
         if tien<=0:
             await interaction.followup.send("❌ Tiền phải >0"); return
         if bal<tien:
-            await interaction.followup.send(f"❌ Không đủ tiền! Dư: {bal:,}"); return
+            await interaction.followup.send(f"❌ Không đủ tiền! Dư: {fmt(bal)}"); return
         x1,x2,x3=random.randint(1,6),random.randint(1,6),random.randint(1,6)
         tong=x1+x2+x3
         if x1==x2==x3:
