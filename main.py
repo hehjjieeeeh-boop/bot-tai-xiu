@@ -9,7 +9,6 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 ADMIN_IDS = {"1470776105333162071", "1279776338160652300"}
 BXH_CHANNEL_ID = 1553764675626467388
-
 REWARDS = {1:20000000,2:15000000,3:10000000,4:7000000,5:6000000,6:5000000,7:4000000,8:3000000,9:2000000,10:1000000}
 
 def parse_tien(s):
@@ -42,21 +41,21 @@ def fmt(n):
 DB="data.json"
 balances={}; cau_history=[]; last_claim={}
 debts={}; vay_log={}; banned_until={}
-bxh_msg_id=None
-last_reset_date=""
+debts_time={}
+bxh_msg_id=None; last_reset_date=""
 
 def save():
     with open(DB,"w",encoding="utf-8") as f:
-        json.dump({"balances":balances,"cau":cau_history[-30:],"last":last_claim,"debts":debts,"vay_log":vay_log,"banned":banned_until,"bxh_msg":bxh_msg_id,"reset":last_reset_date},f)
+        json.dump({"balances":balances,"cau":cau_history[-30:],"last":last_claim,"debts":debts,"vay_log":vay_log,"banned":banned_until,"debts_time":debts_time,"bxh_msg":bxh_msg_id,"reset":last_reset_date},f)
 def load():
-    global balances,cau_history,last_claim,debts,vay_log,banned_until,bxh_msg_id,last_reset_date
+    global balances,cau_history,last_claim,debts,vay_log,banned_until,debts_time,bxh_msg_id,last_reset_date
     if os.path.exists(DB):
         try:
             d=json.load(open(DB))
             balances=d.get("balances",{}); cau_history=d.get("cau",[])
             last_claim=d.get("last",{}); debts=d.get("debts",{})
             vay_log=d.get("vay_log",{}); banned_until=d.get("banned",{})
-            bxh_msg_id=d.get("bxh_msg"); last_reset_date=d.get("reset","")
+            debts_time=d.get("debts_time",{}); bxh_msg_id=d.get("bxh_msg"); last_reset_date=d.get("reset","")
         except: pass
 load()
 def get_bal(uid): return balances.get(str(uid),10000)
@@ -124,11 +123,33 @@ async def daily_reset_check():
         if ch: await ch.send(msg)
         await auto_bxh_update()
 
+@tasks.loop(minutes=1)
+async def check_no_tra():
+    now=int(time.time())
+    changed=False
+    for uid in list(debts.keys()):
+        debt=int(debts.get(uid,0))
+        if debt>0:
+            vt=int(debts_time.get(uid,0))
+            if vt!=0 and now-vt>=86400:
+                # quá 24h chưa trả -> cấm 4 tiếng, xoá nợ
+                if banned_until.get(uid,0) < now:
+                    banned_until[uid]=now+14400
+                    debts[uid]=0
+                    debts_time.pop(uid,None)
+                    changed=True
+                    try:
+                        user=await bot.fetch_user(int(uid))
+                        await user.send(f"🚫 Bạn vay {fmt(debt)} xu quá 24h không trả nên bị cấm chơi 4 tiếng và đã xoá nợ!")
+                    except: pass
+    if changed: save()
+
 @bot.event
 async def on_ready():
     await bot.tree.sync()
     if not auto_bxh_update.is_running(): auto_bxh_update.start()
     if not daily_reset_check.is_running(): daily_reset_check.start()
+    if not check_no_tra.is_running(): check_no_tra.start()
     print(f"Online {bot.user}")
 
 @bot.tree.command(name="taixiu",description="Choi tai xiu")
@@ -169,7 +190,11 @@ async def taixiu(interaction: discord.Interaction, tien: str, lua_chon: app_comm
 async def soxu(interaction: discord.Interaction):
     uid=str(interaction.user.id); debt=int(debts.get(uid,0))
     msg=f"💰 Ban co **{fmt(get_bal(uid))} xu**"
-    if debt>0: msg+=f"\n💸 No: **{fmt(debt)} xu**"
+    if debt>0:
+        vt=int(debts_time.get(uid,0)); now=int(time.time())
+        conlai=86400-(now-vt) if vt else 0
+        h=conlai//3600 if conlai>0 else 0
+        msg+=f"\n💸 No: **{fmt(debt)} xu** (con {h}h de tra)"
     await interaction.response.send_message(msg)
 
 @bot.tree.command(name="chuyentien",description="Chuyen xu")
@@ -229,8 +254,10 @@ async def vayxu(interaction: discord.Interaction, tien: str):
     if tong_tuan+tien_v>5000000:
         await interaction.followup.send(f"❌ Gioi han 5M/tuan! Da vay {fmt(tong_tuan)}/5M"); return
     logs.append([now,tien_v]); vay_log[uid]=logs
+    if int(debts.get(uid,0))==0:
+        debts_time[uid]=now
     balances[uid]=get_bal(uid)+tien_v; debts[uid]=int(debts.get(uid,0))+tien_v; save()
-    await interaction.followup.send(f"💸 Vay **{fmt(tien_v)} xu** thanh cong!\n💸 No: **{fmt(debts[uid])} xu**")
+    await interaction.followup.send(f"💸 Vay **{fmt(tien_v)} xu** thanh cong! Phai tra trong 24h\n💸 No: **{fmt(debts[uid])} xu**")
 
 @bot.tree.command(name="trano",description="Tra no xu")
 async def trano(interaction: discord.Interaction, tien: str):
@@ -246,9 +273,11 @@ async def trano(interaction: discord.Interaction, tien: str):
     bal=get_bal(uid)
     if bal < tien_v:
         banned_until[uid]=now+14400
-        debts[uid]=0; save()
+        debts[uid]=0; debts_time.pop(uid,None); save()
         await interaction.followup.send(f"🚫 Khong du xu tra! Bi cam 4 tieng va xoa no **{fmt(debt)} xu**!"); return
-    balances[uid]=bal-tien_v; debts[uid]=debt-tien_v; save()
+    balances[uid]=bal-tien_v; debts[uid]=debt-tien_v
+    if debts[uid]==0: debts_time.pop(uid,None)
+    save()
     await interaction.followup.send(f"✅ Da tra **{fmt(tien_v)} xu**!\n💸 No con: **{fmt(debts[uid])} xu**")
 
 @bot.tree.command(name="cau",description="Xem cau")
