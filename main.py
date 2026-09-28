@@ -15,6 +15,7 @@ VAY_LIMIT_NGAY = 2000000
 VAY_HAN_GIO = 20
 BAN_GIO = 3
 BAN_TIME = 40
+STALE_AFTER = BAN_TIME + 30
 
 def parse_tien(s):
     s=str(s).lower().strip().replace(",","").replace(" ","")
@@ -115,15 +116,28 @@ async def get_ch(cid):
     try: return await bot.fetch_channel(cid)
     except: return None
 
-async def kenh_dang_co_ban(ch):
+async def tim_ban_dang_chay(ch):
     try:
-        async for m in ch.history(limit=8):
+        for m in [mm async for mm in ch.history(limit=8)]:
             if bot.user and m.author.id!=bot.user.id: continue
             for em in m.embeds:
                 if em.title==TABLE_TITLE and em.description and ("Dang nhan cuoc" in em.description or "CHOT SO" in em.description):
-                    return True
-    except Exception as e: print("kenh_dang_co_ban loi",e,flush=True)
-    return False
+                    age=(discord.utils.utcnow()-m.created_at).total_seconds()
+                    cl=None
+                    for f in em.fields:
+                        if "Con lai" in (f.name or ""):
+                            mm=re.search(r"\*\*(\d+)s\*\*", f.value or "")
+                            if mm: cl=int(mm.group(1))
+                    return m, cl, age
+    except Exception as e: print("tim_ban loi",e,flush=True)
+    return None, None, None
+
+async def tiep_quan_ban(gid,ch,msg,conlai):
+    if gid in sessions or gid in ban_tasks: return sessions.get(gid)
+    sessions[gid]={"bets":{},"channel_id":ch.id,"msg_id":msg.id,"end_time":time.time()+max(5,conlai or 30)}
+    ban_tasks[gid]=asyncio.create_task(chay_ban(gid))
+    print("Tiep quan ban cu, con lai",conlai,flush=True)
+    return sessions[gid]
 
 async def update_ban(gid):
     s=sessions.get(gid)
@@ -165,7 +179,7 @@ async def chay_ban(gid):
                 m=await ch.fetch_message(s["msg_id"]); await m.edit(content=None,embed=emb)
             except: await ch.send(embed=emb)
         await asyncio.sleep(5)
-    except Exception as e: print("chay_ban loi",traceback.format_exc(),flush=True)
+    except Exception: print("chay_ban loi",traceback.format_exc(),flush=True)
     finally:
         sessions.pop(gid,None); ban_tasks.pop(gid,None)
         await auto_moban(gid)
@@ -177,11 +191,16 @@ async def auto_moban(gid):
         ch=await get_ch(AUTO_BAN_CHANNEL_ID)
         if not ch: return
         if gid in sessions: return
-        if await kenh_dang_co_ban(ch): return
+        m, cl, age = await tim_ban_dang_chay(ch)
+        if m and age < STALE_AFTER:
+            await tiep_quan_ban(gid,ch,m,cl); return
+        if m:
+            try: await m.delete(); print("Xoa ban stale",flush=True)
+            except: pass
         msg=await ch.send(embed=ban_embed(BAN_TIME,{},False))
         sessions[gid]={"bets":{},"channel_id":ch.id,"msg_id":msg.id,"end_time":time.time()+BAN_TIME}
         ban_tasks[gid]=asyncio.create_task(chay_ban(gid))
-    except Exception as e: print("auto_moban loi",traceback.format_exc(),flush=True)
+    except Exception: print("auto_moban loi",traceback.format_exc(),flush=True)
     finally: opening.discard(gid)
 
 @tasks.loop(seconds=30)
@@ -203,10 +222,19 @@ async def auto_tien(i,cur):
     return out[:25]
 
 def bxh_text():
-    if not vip_balances: return EMO_CUP+" TOP 10 XU VIP\n\nChua co du lieu (doi xu thuong -> xu VIP bang /doixu de len BXH)"
-    top=sorted(vip_balances.items(),key=lambda x:x[1],reverse=True)[:10]
-    t=EMO_CUP+" TOP 10 XU VIP\n\n"
-    for i,(u,b) in enumerate(top): t+=str(i+1)+". <@"+u+"> - "+fmt(b)+" VIP\n"
+    head=EMO_CUP+" TOP 10 XU VIP\n\n"
+    if not vip_balances:
+        t=head+"Chua co du lieu (doi xu thuong -> xu VIP bang /doixu de len BXH)\n"
+    else:
+        top=sorted(vip_balances.items(),key=lambda x:x[1],reverse=True)[:10]
+        t=head
+        for i,(u,b) in enumerate(top):
+            rw=REWARDS.get(i+1,0)
+            t+=str(i+1)+". <@"+u+"> - "+fmt(b)+" VIP "+EMO_GIFT+" Thuong: "+fmt(rw)+"\n"
+    t+="\n"+EMO_GIFT+" BANG THUONG TOP 10 (trao luc 00:00 moi ngay):\n"
+    for i in range(1,11):
+        t+="Top "+str(i)+": "+fmt(REWARDS[i])+"\n"
+    t+="\n"+EMO_GEM+" Doi xu: /doixu (10 xu thuong = 1 xu VIP)"
     return t
 
 @tasks.loop(hours=2)
@@ -240,6 +268,14 @@ async def daily_rs():
                 vip_balances[u]=rw
             pending_rewards.clear()
             save()
+            try:
+                ch=bot.get_channel(BXH_CHANNEL_ID) or await bot.fetch_channel(BXH_CHANNEL_ID)
+                tt=EMO_GIFT+" DA TRAO THUONG TOP 10 NGAY "+td+"\n\n"
+                for i,(u,b) in enumerate(top):
+                    rw=REWARDS.get(i+1,0)
+                    if rw>0: tt+="Top "+str(i+1)+": <@"+u+"> nhan "+fmt(rw)+"\n"
+                await ch.send(tt)
+            except Exception as e: print("thong bao thuong loi",e,flush=True)
     except Exception as e: print("daily_rs loi",e,flush=True)
 @tasks.loop(minutes=1)
 async def check_tra():
@@ -266,6 +302,14 @@ async def on_ready():
 @app_commands.choices(lua_chon=[app_commands.Choice(name="Tai",value="tai"),app_commands.Choice(name="Xiu",value="xiu")])
 async def datcuoc(interaction:discord.Interaction,tien:str,lua_chon:app_commands.Choice[str]):
     gid=interaction.guild_id; s=sessions.get(gid)
+    if not s:
+        try:
+            ch=await get_ch(AUTO_BAN_CHANNEL_ID)
+            if ch:
+                m, cl, age = await tim_ban_dang_chay(ch)
+                if m and age < STALE_AFTER:
+                    s=await tiep_quan_ban(gid,ch,m,cl)
+        except Exception as e: print("datcuoc tiep quan loi",e,flush=True)
     if not s: await interaction.response.send_message("Chua co ban! Doi bot mo ban moi.",ephemeral=True); return
     if time.time()>=s["end_time"]-5: await interaction.response.send_message(EMO_LOCK+" Da chot so!",ephemeral=True); return
     uid=str(interaction.user.id)
@@ -350,7 +394,7 @@ async def cau(interaction:discord.Interaction):
 @bot.tree.command(name="cauchung",description="Xem cau dat cuoc chung ca server")
 async def cauchung(interaction:discord.Interaction):
     await interaction.response.send_message(" ".join(cau_chung[-20:]) if cau_chung else "Chua co")
-@bot.tree.command(name="bxh",description="Top 10")
+@bot.tree.command(name="bxh",description="Top 10 + bang thuong")
 async def bxh(interaction:discord.Interaction):
     await interaction.response.defer(); await interaction.followup.send(bxh_text())
 @bot.tree.command(name="doixu",description="Doi 10 xu thuong = 1 xu VIP (len BXH)")
@@ -359,32 +403,4 @@ async def doixu(interaction:discord.Interaction,tien:str):
     await interaction.response.defer(ephemeral=True)
     uid=str(interaction.user.id)
     bal=get_bal(uid)
-    try: p=parse_tien(tien); tv=bal if p=="ALL" else p
-    except: await interaction.followup.send("Tien sai!",ephemeral=True); return
-    if tv<10: await interaction.followup.send(EMO_NO+" Toi thieu 10 xu thuong!",ephemeral=True); return
-    if tv>bal: await interaction.followup.send("Khong du! Co "+fmt(bal),ephemeral=True); return
-    vip_gain=tv//10
-    if vip_gain<=0: await interaction.followup.send(EMO_NO+" So xu khong du doi!",ephemeral=True); return
-    cost=vip_gain*10
-    balances[uid]=bal-cost; vip_balances[uid]=get_vip(uid)+vip_gain; save()
-    await interaction.followup.send(EMO_OK+" Doi "+fmt(cost)+" xu thuong -> "+fmt(vip_gain)+" xu VIP!\n"+EMO_GEM+" Xu VIP: "+fmt(get_vip(uid)),ephemeral=True)
-@bot.tree.command(name="congxu",description="Cong xu Admin")
-async def congxu(interaction:discord.Interaction,nguoi:discord.Member,tien:str):
-    if str(interaction.user.id) not in ADMIN_IDS: await interaction.response.send_message("No!",ephemeral=True); return
-    tv=parse_tien(tien); balances[str(nguoi.id)]=get_bal(str(nguoi.id))+tv; save()
-    await interaction.response.send_message("Cong "+fmt(tv)+" cho "+nguoi.mention)
-@bot.tree.command(name="bocam",description="Go ban Admin")
-async def bocam(interaction:discord.Interaction,nguoi:discord.Member):
-    if str(interaction.user.id) not in ADMIN_IDS: return
-    banned_until.pop(str(nguoi.id),None); save()
-    await interaction.response.send_message("Go ban "+nguoi.mention)
-
-if __name__=="__main__":
-    if not TOKEN:
-        print("Thieu TOKEN! Kiem tra Variables tren Railway co DISCORD_TOKEN hoac DISCORD_BOT_TOKEN chua.",flush=True)
-        sys.exit(1)
-    try:
-        bot.run(TOKEN)
-    except Exception:
-        print("BOT CRASH:",traceback.format_exc(),flush=True)
-        sys.exit(1)
+    try: p=parse_tien(tien); tv=bal if p
