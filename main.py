@@ -1,9 +1,9 @@
-import 【entity-discord¦canonical_name=discord】, random, json, os, re, time, datetime
-from 【entity-discord¦canonical_name=discord】.ext import commands, tasks
-from 【entity-discord¦canonical_name=discord】 import app_commands
+import discord, random, json, os, re, time, datetime, sys
+from discord.ext import commands, tasks
+from discord import app_commands
 
 TOKEN = os.getenv("DISCORD_TOKEN")
-intents = 【entity-discord¦canonical_name=discord】.Intents.default()
+intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -51,18 +51,22 @@ debts_time={}
 bxh_msg_id=None; last_reset_date=""
 
 def save():
-    with open(DB,"w",encoding="utf-8") as f:
-        json.dump({"balances":balances,"cau":cau_history[-30:],"last":last_claim,"debts":debts,"vay_log":vay_log,"banned":banned_until,"debts_time":debts_time,"bxh_msg":bxh_msg_id,"reset":last_reset_date},f)
+    try:
+        with open(DB,"w",encoding="utf-8") as f:
+            json.dump({"balances":balances,"cau":cau_history[-30:],"last":last_claim,"debts":debts,"vay_log":vay_log,"banned":banned_until,"debts_time":debts_time,"bxh_msg":bxh_msg_id,"reset":last_reset_date},f)
+    except Exception as e:
+        print(f"Loi save: {e}")
 def load():
     global balances,cau_history,last_claim,debts,vay_log,banned_until,debts_time,bxh_msg_id,last_reset_date
     if os.path.exists(DB):
         try:
-            d=json.load(open(DB))
+            d=json.load(open(DB,encoding="utf-8"))
             balances=d.get("balances",{}); cau_history=d.get("cau",[])
             last_claim=d.get("last",{}); debts=d.get("debts",{})
             vay_log=d.get("vay_log",{}); banned_until=d.get("banned",{})
             debts_time=d.get("debts_time",{}); bxh_msg_id=d.get("bxh_msg"); last_reset_date=d.get("reset","")
-        except: pass
+        except Exception as e:
+            print(f"Loi load DB, dung DB moi: {e}")
 load()
 def get_bal(uid): return balances.get(str(uid),10000)
 
@@ -75,7 +79,7 @@ async def tien_autocomplete(interaction: discord.Interaction, current: str):
             out.append(app_commands.Choice(name=v, value=v))
     if cur and cur not in TIEN_GOISAN:
         try:
-            p=parse_tien(cur)
+            parse_tien(cur)
             out.insert(0, app_commands.Choice(name=f"{cur} (tuy chinh)", value=cur))
         except: pass
     return out[:25]
@@ -94,7 +98,7 @@ def build_bxh_text():
 @tasks.loop(hours=2)
 async def auto_bxh_update():
     global bxh_msg_id
-    print(">>> Dang cap nhat BXH...")
+    print(">>> Dang cap nhat BXH...", flush=True)
     try:
         ch = bot.get_channel(BXH_CHANNEL_ID)
         if not ch:
@@ -104,15 +108,15 @@ async def auto_bxh_update():
             try:
                 old = await ch.fetch_message(bxh_msg_id)
                 await old.edit(content=text)
-                print(">>> Da edit BXH cu")
+                print(">>> Da edit BXH cu", flush=True)
                 return
             except Exception as e:
-                print(f">>> Khong edit duoc ({e}), se gui moi")
+                print(f">>> Khong edit duoc ({e}), se gui moi", flush=True)
         m = await ch.send(text)
         bxh_msg_id = m.id; save()
-        print(f">>> Da gui BXH moi: {m.id}")
+        print(f">>> Da gui BXH moi: {m.id}", flush=True)
     except Exception as e:
-        print(f">>> LOI BXH: {e}")
+        print(f">>> LOI BXH: {e}", flush=True)
 
 @auto_bxh_update.before_loop
 async def before_bxh():
@@ -126,18 +130,22 @@ async def daily_reset_check():
     if now_vn.hour==0 and now_vn.minute<2 and last_reset_date!=today:
         last_reset_date=today
         top=sorted(balances.items(),key=lambda x:x[1],reverse=True)[:10]
-        ch=bot.get_channel(BXH_CHANNEL_ID)
-        if not ch:
-            try: ch=await bot.fetch_channel(BXH_CHANNEL_ID)
-            except: ch=None
+        try:
+            ch=bot.get_channel(BXH_CHANNEL_ID)
+            if not ch:
+                ch=await bot.fetch_channel(BXH_CHANNEL_ID)
+        except: ch=None
         msg="🎉 **KET QUA BXH NGAY "+today+"**\n\n"
         for i,(uid,bal) in enumerate(top):
             rank=i+1; rw=REWARDS.get(rank,0)
             balances[uid]=get_bal(uid)+rw
             msg+=f"{rank}. <@{uid}> nhan **{fmt(rw)} xu**\n"
         save()
-        if ch: await ch.send(msg)
-        await auto_bxh_update()
+        if ch:
+            try: await ch.send(msg)
+            except: pass
+        try: await auto_bxh_update()
+        except: pass
 
 @tasks.loop(minutes=1)
 async def check_no_tra():
@@ -162,6 +170,7 @@ async def check_no_tra():
 
 @bot.event
 async def on_ready():
+    print(f"Online {bot.user} - BXH channel: {BXH_CHANNEL_ID}", flush=True)
     await bot.tree.sync()
     if not auto_bxh_update.is_running():
         auto_bxh_update.start()
@@ -169,7 +178,6 @@ async def on_ready():
         daily_reset_check.start()
     if not check_no_tra.is_running():
         check_no_tra.start()
-    print(f"Online {bot.user} - BXH channel: {BXH_CHANNEL_ID}")
 
 @bot.tree.command(name="taixiu",description="Choi tai xiu - nhap all de tat tay")
 @app_commands.autocomplete(tien=tien_autocomplete)
@@ -338,4 +346,12 @@ async def bxh(interaction: discord.Interaction):
     await interaction.response.defer()
     await interaction.followup.send(build_bxh_text())
 
-bot.run(TOKEN)
+if __name__ == "__main__":
+    if not TOKEN:
+        print("LOI: Chua set DISCORD_TOKEN trong Variables cua Railway!", flush=True)
+        sys.exit(1)
+    try:
+        bot.run(TOKEN)
+    except Exception as e:
+        print(f"LOI khi chay bot: {e}", flush=True)
+        sys.exit(1)
