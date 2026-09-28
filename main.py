@@ -1,9 +1,9 @@
-import discord, random, json, os, re, time, datetime
-from discord.ext import commands, tasks
-from discord import app_commands
+import 【entity-discord¦canonical_name=discord】, random, json, os, re, time, datetime
+from 【entity-discord¦canonical_name=discord】.ext import commands, tasks
+from 【entity-discord¦canonical_name=discord】 import app_commands
 
 TOKEN = os.getenv("DISCORD_TOKEN")
-intents = discord.Intents.default()
+intents = 【entity-discord¦canonical_name=discord】.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -11,8 +11,14 @@ ADMIN_IDS = {"1470776105333162071", "1279776338160652300"}
 BXH_CHANNEL_ID = 1553764675626467388
 REWARDS = {1:20000000,2:15000000,3:10000000,4:7000000,5:6000000,6:5000000,7:4000000,8:3000000,9:2000000,10:1000000}
 
+VAY_LIMIT_NGAY = 2000000
+VAY_HAN_GIO = 20
+BAN_GIO = 3
+
 def parse_tien(s):
     s=str(s).lower().strip().replace(",","").replace(" ","")
+    if s in ("all","allin","tatay"):
+        return "ALL"
     m=re.match(r"^(\d+(\.\d+)?)(k|m|b|t)?$", s)
     if not m: raise ValueError
     n=float(m.group(1)); u=m.group(3)
@@ -60,7 +66,7 @@ def load():
 load()
 def get_bal(uid): return balances.get(str(uid),10000)
 
-TIEN_GOISAN = ["1k","10k","100k","1m","10m","100m","1b","10b","1t"]
+TIEN_GOISAN = ["all","1k","10k","100k","1m","10m","100m","1b","10b","1t"]
 async def tien_autocomplete(interaction: discord.Interaction, current: str):
     cur=current.lower().strip()
     out=[]
@@ -69,7 +75,7 @@ async def tien_autocomplete(interaction: discord.Interaction, current: str):
             out.append(app_commands.Choice(name=v, value=v))
     if cur and cur not in TIEN_GOISAN:
         try:
-            parse_tien(cur)
+            p=parse_tien(cur)
             out.insert(0, app_commands.Choice(name=f"{cur} (tuy chinh)", value=cur))
         except: pass
     return out[:25]
@@ -88,19 +94,29 @@ def build_bxh_text():
 @tasks.loop(hours=2)
 async def auto_bxh_update():
     global bxh_msg_id
-    ch=bot.get_channel(BXH_CHANNEL_ID)
-    if not ch:
-        try: ch=await bot.fetch_channel(BXH_CHANNEL_ID)
-        except: return
-    text=build_bxh_text()
+    print(">>> Dang cap nhat BXH...")
     try:
+        ch = bot.get_channel(BXH_CHANNEL_ID)
+        if not ch:
+            ch = await bot.fetch_channel(BXH_CHANNEL_ID)
+        text = build_bxh_text()
         if bxh_msg_id:
-            old=await ch.fetch_message(bxh_msg_id)
-            await old.edit(content=text)
-            return
-    except: pass
-    m=await ch.send(text)
-    bxh_msg_id=m.id; save()
+            try:
+                old = await ch.fetch_message(bxh_msg_id)
+                await old.edit(content=text)
+                print(">>> Da edit BXH cu")
+                return
+            except Exception as e:
+                print(f">>> Khong edit duoc ({e}), se gui moi")
+        m = await ch.send(text)
+        bxh_msg_id = m.id; save()
+        print(f">>> Da gui BXH moi: {m.id}")
+    except Exception as e:
+        print(f">>> LOI BXH: {e}")
+
+@auto_bxh_update.before_loop
+async def before_bxh():
+    await bot.wait_until_ready()
 
 @tasks.loop(minutes=1)
 async def daily_reset_check():
@@ -127,64 +143,83 @@ async def daily_reset_check():
 async def check_no_tra():
     now=int(time.time())
     changed=False
+    han_giay=VAY_HAN_GIO*3600
     for uid in list(debts.keys()):
         debt=int(debts.get(uid,0))
         if debt>0:
             vt=int(debts_time.get(uid,0))
-            if vt!=0 and now-vt>=86400:
-                # quá 24h chưa trả -> cấm 4 tiếng, xoá nợ
+            if vt!=0 and now-vt>=han_giay:
                 if banned_until.get(uid,0) < now:
-                    banned_until[uid]=now+14400
+                    banned_until[uid]=now+BAN_GIO*3600
                     debts[uid]=0
                     debts_time.pop(uid,None)
                     changed=True
                     try:
                         user=await bot.fetch_user(int(uid))
-                        await user.send(f"🚫 Bạn vay {fmt(debt)} xu quá 24h không trả nên bị cấm chơi 4 tiếng và đã xoá nợ!")
+                        await user.send(f"🚫 Ban vay {fmt(debt)} xu qua {VAY_HAN_GIO}h khong tra nen bi cam {BAN_GIO} tieng va da xoa no!")
                     except: pass
     if changed: save()
 
 @bot.event
 async def on_ready():
     await bot.tree.sync()
-    if not auto_bxh_update.is_running(): auto_bxh_update.start()
-    if not daily_reset_check.is_running(): daily_reset_check.start()
-    if not check_no_tra.is_running(): check_no_tra.start()
-    print(f"Online {bot.user}")
+    if not auto_bxh_update.is_running():
+        auto_bxh_update.start()
+    if not daily_reset_check.is_running():
+        daily_reset_check.start()
+    if not check_no_tra.is_running():
+        check_no_tra.start()
+    print(f"Online {bot.user} - BXH channel: {BXH_CHANNEL_ID}")
 
-@bot.tree.command(name="taixiu",description="Choi tai xiu")
+@bot.tree.command(name="taixiu",description="Choi tai xiu - nhap all de tat tay")
 @app_commands.autocomplete(tien=tien_autocomplete)
 @app_commands.choices(lua_chon=[app_commands.Choice(name="Tai",value="tai"),app_commands.Choice(name="Xiu",value="xiu")])
 async def taixiu(interaction: discord.Interaction, tien: str, lua_chon: app_commands.Choice[str]):
     await interaction.response.defer()
-    try: tien_v=parse_tien(tien)
+    uid=str(interaction.user.id)
+    bal=get_bal(uid)
+    try:
+        p=parse_tien(tien)
+        tien_v=bal if p=="ALL" else p
     except:
-        await interaction.followup.send("❌ Tien khong hop le! VD: 10k, 1m, 1b, 1t"); return
+        await interaction.followup.send("❌ Tien khong hop le! VD: 10k, 1m, 1b, all"); return
     chon=lua_chon.value
-    uid=str(interaction.user.id); now=int(time.time())
+    now=int(time.time())
     bt=banned_until.get(uid,0)
     if bt>now:
         conlai=bt-now; h=conlai//3600; m=(conlai%3600)//60
         await interaction.followup.send(f"🚫 Bi cam choi {h}h {m}p!"); return
     if bt!=0 and bt<=now:
         banned_until.pop(uid,None); save()
-    bal=get_bal(uid)
     if tien_v<=0:
-        await interaction.followup.send("❌ Tien > 0"); return
+        await interaction.followup.send("❌ Tien > 0 (ban khong con xu de all!)"); return
     if tien_v>bal:
         await interaction.followup.send(f"❌ Khong du xu! Ban co {fmt(bal)} xu"); return
-    x1=random.randint(1,6); x2=random.randint(1,6); x3=random.randint(1,6)
-    tong=x1+x2+x3
-    if x1==x2==x3:
+    def roll_dice_for(target):
+        while True:
+            x1=random.randint(1,6); x2=random.randint(1,6); x3=random.randint(1,6)
+            if x1==x2==x3: continue
+            tong=x1+x2+x3
+            if target=="xiu" and 4<=tong<=10: return x1,x2,x3,tong
+            if target=="tai" and 11<=tong<=17: return x1,x2,x3,tong
+    if random.random() < 0.028:
+        x=random.randint(1,6); x1=x2=x3=x; tong=x*3
         win=False; kq="Bao 🏠"; kn="B"
     else:
-        real="xiu" if 4<=tong<=10 else "tai"
+        last = cau_history[-1] if cau_history else None
+        if last in ("T","X") and random.random() < 0.40:
+            target = "tai" if last=="T" else "xiu"
+        else:
+            target = random.choice(["tai","xiu"])
+        x1,x2,x3,tong = roll_dice_for(target)
+        real=target
         win=(real==chon); kq="Xiu" if real=="xiu" else "Tai"; kn="X" if real=="xiu" else "T"
     cau_history.append(kn)
     balances[uid]=bal+tien_v if win else bal-tien_v
     save()
     icon="✅ THANG" if win else "❌ THUA"
-    await interaction.followup.send(f"🎲 {x1}-{x2}-{x3} (Tong {tong}) => **{kq}**\n{icon} `{fmt(tien_v)} xu`\n💰 Du: **{fmt(balances[uid])} xu**\n📈 Cau: {' '.join(cau_history[-10:])}")
+    all_tag=" (ALL IN)" if str(tien).lower() in ("all","allin","tatay") else ""
+    await interaction.followup.send(f"🎲 {x1}-{x2}-{x3} (Tong {tong}) => **{kq}**\n{icon} `{fmt(tien_v)} xu`{all_tag}\n💰 Du: **{fmt(balances[uid])} xu**\n📈 Cau: {' '.join(cau_history[-10:])}")
 
 @bot.tree.command(name="soxu",description="Xem so xu")
 async def soxu(interaction: discord.Interaction):
@@ -192,15 +227,19 @@ async def soxu(interaction: discord.Interaction):
     msg=f"💰 Ban co **{fmt(get_bal(uid))} xu**"
     if debt>0:
         vt=int(debts_time.get(uid,0)); now=int(time.time())
-        conlai=86400-(now-vt) if vt else 0
-        h=conlai//3600 if conlai>0 else 0
+        conlai=VAY_HAN_GIO*3600-(now-vt) if vt else 0
+        h=max(0,conlai//3600)
         msg+=f"\n💸 No: **{fmt(debt)} xu** (con {h}h de tra)"
     await interaction.response.send_message(msg)
 
 @bot.tree.command(name="chuyentien",description="Chuyen xu")
 async def chuyentien(interaction: discord.Interaction, nguoi: discord.Member, tien: str):
     await interaction.response.defer()
-    try: tien_v=parse_tien(tien)
+    try:
+        p=parse_tien(tien)
+        if p=="ALL":
+            await interaction.followup.send("❌ Khong dung all o day!"); return
+        tien_v=p
     except:
         await interaction.followup.send("❌ Tien khong hop le!"); return
     uid=str(interaction.user.id); tid=str(nguoi.id); bal=get_bal(uid)
@@ -223,7 +262,10 @@ async def nhanxu(interaction: discord.Interaction):
 async def congxu(interaction: discord.Interaction, nguoi: discord.Member, tien: str):
     if str(interaction.user.id) not in ADMIN_IDS:
         await interaction.response.send_message("❌ Khong co quyen!",ephemeral=True); return
-    try: tien_v=parse_tien(tien)
+    try:
+        tien_v=parse_tien(tien)
+        if tien_v=="ALL":
+            await interaction.response.send_message("❌ Khong dung all!"); return
     except:
         await interaction.response.send_message("❌ Tien khong hop le!"); return
     tid=str(nguoi.id); balances[tid]=get_bal(tid)+tien_v; save()
@@ -240,24 +282,27 @@ async def bocam(interaction: discord.Interaction, nguoi: discord.Member):
     else:
         await interaction.response.send_message(f"ℹ️ {nguoi.mention} khong bi cam")
 
-@bot.tree.command(name="vayxu",description="Vay xu toi da 5M/tuan")
+@bot.tree.command(name="vayxu",description="Vay xu toi da 2M/ngay")
 async def vayxu(interaction: discord.Interaction, tien: str):
     await interaction.response.defer()
     uid=str(interaction.user.id); now=int(time.time())
-    try: tien_v=parse_tien(tien)
+    try:
+        tien_v=parse_tien(tien)
+        if tien_v=="ALL":
+            await interaction.followup.send("❌ Khong dung all!"); return
     except:
         await interaction.followup.send("❌ Tien khong hop le!"); return
     if tien_v<=0:
         await interaction.followup.send("❌ Tien > 0"); return
-    logs=[x for x in vay_log.get(uid,[]) if now-x[0] < 7*86400]
-    tong_tuan=sum(x[1] for x in logs)
-    if tong_tuan+tien_v>5000000:
-        await interaction.followup.send(f"❌ Gioi han 5M/tuan! Da vay {fmt(tong_tuan)}/5M"); return
+    logs=[x for x in vay_log.get(uid,[]) if now-x[0] < 86400]
+    tong_ngay=sum(x[1] for x in logs)
+    if tong_ngay+tien_v>VAY_LIMIT_NGAY:
+        await interaction.followup.send(f"❌ Gioi han {fmt(VAY_LIMIT_NGAY)}/ngay! Da vay {fmt(tong_ngay)}/{fmt(VAY_LIMIT_NGAY)}"); return
     logs.append([now,tien_v]); vay_log[uid]=logs
     if int(debts.get(uid,0))==0:
         debts_time[uid]=now
     balances[uid]=get_bal(uid)+tien_v; debts[uid]=int(debts.get(uid,0))+tien_v; save()
-    await interaction.followup.send(f"💸 Vay **{fmt(tien_v)} xu** thanh cong! Phai tra trong 24h\n💸 No: **{fmt(debts[uid])} xu**")
+    await interaction.followup.send(f"💸 Vay **{fmt(tien_v)} xu** thanh cong! Phai tra trong {VAY_HAN_GIO}h\n💸 No: **{fmt(debts[uid])} xu**")
 
 @bot.tree.command(name="trano",description="Tra no xu")
 async def trano(interaction: discord.Interaction, tien: str):
@@ -266,15 +311,17 @@ async def trano(interaction: discord.Interaction, tien: str):
     debt=int(debts.get(uid,0))
     if debt<=0:
         await interaction.followup.send("✅ Khong co no!"); return
-    try: tien_v=parse_tien(tien)
+    try:
+        p=parse_tien(tien)
+        tien_v=debt if p=="ALL" else p
     except:
         await interaction.followup.send("❌ Tien khong hop le!"); return
     if tien_v>debt: tien_v=debt
     bal=get_bal(uid)
     if bal < tien_v:
-        banned_until[uid]=now+14400
+        banned_until[uid]=now+BAN_GIO*3600
         debts[uid]=0; debts_time.pop(uid,None); save()
-        await interaction.followup.send(f"🚫 Khong du xu tra! Bi cam 4 tieng va xoa no **{fmt(debt)} xu**!"); return
+        await interaction.followup.send(f"🚫 Khong du xu tra! Bi cam {BAN_GIO} tieng va xoa no **{fmt(debt)} xu**!"); return
     balances[uid]=bal-tien_v; debts[uid]=debt-tien_v
     if debts[uid]==0: debts_time.pop(uid,None)
     save()
