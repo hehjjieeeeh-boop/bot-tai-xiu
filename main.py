@@ -1,9 +1,20 @@
-import discord, random, json, os, re, time, datetime, sys, asyncio, traceback
-from discord.ext import commands, tasks
-from discord import app_commands
+import 【entity-discord¦canonical_name=discord】, random, json, os, re, time, datetime, sys, asyncio, traceback
+from 【entity-discord¦canonical_name=discord】.ext import commands, tasks
+from 【entity-discord¦canonical_name=discord】 import app_commands
+
+print("=== BOT DANG KHOI DONG ===", flush=True)
+try:
+    import aiohttp
+    print("aiohttp OK", flush=True)
+except Exception as e:
+    print("CANH BAO: thieu aiohttp:", e, flush=True)
 
 TOKEN = os.getenv("DISCORD_TOKEN") or os.getenv("DISCORD_BOT_TOKEN") or os.getenv("TOKEN")
-intents = discord.Intents.default()
+print("Token tim thay:", "CO" if TOKEN else "KHONG", flush=True)
+print("【entity-discord¦canonical_name=discord】.py version:", getattr(【entity-discord¦canonical_name=discord】, "__version__", "khong ro"), flush=True)
+print("Python:", sys.version.split()[0], flush=True)
+
+intents = 【entity-discord¦canonical_name=discord】.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -16,6 +27,9 @@ VAY_HAN_GIO = 20
 BAN_GIO = 3
 BAN_TIME = 40
 STALE_AFTER = BAN_TIME + 30
+
+def utcnow():
+    return datetime.datetime.now(datetime.timezone.utc)
 
 def parse_tien(s):
     s=str(s).lower().strip().replace(",","").replace(" ","")
@@ -48,6 +62,7 @@ def save():
         with open(DB,"w",encoding="utf-8") as f:
             json.dump({"balances":balances,"cau":cau_history[-30:],"cau_le":cau_le[-30:],"cau_chung":cau_chung[-30:],"last":last_claim,"debts":debts,"vay_log":vay_log,"banned":banned_until,"debts_time":debts_time,"bxh_msg":bxh_msg_id,"reset":last_reset_date,"vip":vip_balances,"pending":pending_rewards},f,ensure_ascii=False)
     except: pass
+
 def load():
     global balances,cau_history,cau_le,cau_chung,last_claim,debts,vay_log,banned_until,debts_time,bxh_msg_id,last_reset_date,vip_balances,pending_rewards
     if os.path.exists(DB):
@@ -59,6 +74,8 @@ def load():
             debts_time=d.get("debts_time",{}); bxh_msg_id=d.get("bxh_msg"); last_reset_date=d.get("reset",""); vip_balances=d.get("vip",{}); pending_rewards=d.get("pending",{})
         except: pass
 load()
+print("Load du lieu xong", flush=True)
+
 def get_bal(uid): return int(balances.get(str(uid),10000))
 def get_vip(uid): return int(vip_balances.get(str(uid),0))
 
@@ -118,11 +135,11 @@ async def get_ch(cid):
 
 async def tim_ban_dang_chay(ch):
     try:
-        for m in [mm async for mm in ch.history(limit=8)]:
+        async for m in ch.history(limit=8):
             if bot.user and m.author.id!=bot.user.id: continue
             for em in m.embeds:
                 if em.title==TABLE_TITLE and em.description and ("Dang nhan cuoc" in em.description or "CHOT SO" in em.description):
-                    age=(discord.utils.utcnow()-m.created_at).total_seconds()
+                    age=(utcnow()-m.created_at).total_seconds()
                     cl=None
                     for f in em.fields:
                         if "Con lai" in (f.name or ""):
@@ -189,7 +206,8 @@ async def auto_moban(gid):
     opening.add(gid)
     try:
         ch=await get_ch(AUTO_BAN_CHANNEL_ID)
-        if not ch: return
+        if not ch:
+            print("Khong tim thay kenh ban chung:", AUTO_BAN_CHANNEL_ID, flush=True); return
         if gid in sessions: return
         m, cl, age = await tim_ban_dang_chay(ch)
         if m and age < STALE_AFTER:
@@ -200,14 +218,17 @@ async def auto_moban(gid):
         msg=await ch.send(embed=ban_embed(BAN_TIME,{},False))
         sessions[gid]={"bets":{},"channel_id":ch.id,"msg_id":msg.id,"end_time":time.time()+BAN_TIME}
         ban_tasks[gid]=asyncio.create_task(chay_ban(gid))
+        print("Da mo ban moi", flush=True)
     except Exception: print("auto_moban loi",traceback.format_exc(),flush=True)
     finally: opening.discard(gid)
 
 @tasks.loop(seconds=30)
 async def auto_ban_loop():
-    for g in list(bot.guilds):
-        if g.id not in sessions and g.id not in ban_tasks and g.id not in opening:
-            await auto_moban(g.id)
+    try:
+        for g in list(bot.guilds):
+            if g.id not in sessions and g.id not in ban_tasks and g.id not in opening:
+                await auto_moban(g.id)
+    except Exception: print("auto_ban_loop loi",traceback.format_exc(),flush=True)
 @auto_ban_loop.before_loop
 async def _abl(): await bot.wait_until_ready()
 
@@ -250,6 +271,7 @@ async def auto_bxh():
     except Exception as e: print("auto_bxh loi",e,flush=True)
 @auto_bxh.before_loop
 async def _b(): await bot.wait_until_ready()
+
 @tasks.loop(minutes=1)
 async def daily_rs():
     global last_reset_date
@@ -277,25 +299,38 @@ async def daily_rs():
                 await ch.send(tt)
             except Exception as e: print("thong bao thuong loi",e,flush=True)
     except Exception as e: print("daily_rs loi",e,flush=True)
+
 @tasks.loop(minutes=1)
 async def check_tra():
-    now=int(time.time()); ch=False
-    for u in list(debts.keys()):
-        if int(debts.get(u,0))>0:
-            vt=int(debts_time.get(u,0))
-            if vt and now-vt>=VAY_HAN_GIO*3600 and banned_until.get(u,0)<now:
-                banned_until[u]=now+BAN_GIO*3600; debts[u]=0; debts_time.pop(u,None); ch=True
-    if ch: save()
+    try:
+        now=int(time.time()); ch=False
+        for u in list(debts.keys()):
+            if int(debts.get(u,0))>0:
+                vt=int(debts_time.get(u,0))
+                if vt and now-vt>=VAY_HAN_GIO*3600 and banned_until.get(u,0)<now:
+                    banned_until[u]=now+BAN_GIO*3600; debts[u]=0; debts_time.pop(u,None); ch=True
+        if ch: save()
+    except Exception as e: print("check_tra loi",e,flush=True)
 
 @bot.event
 async def on_ready():
     try:
-        print("Online",bot.user,flush=True); await bot.tree.sync()
+        print("=== BOT ONLINE:", bot.user, "===", flush=True)
+        try:
+            await bot.tree.sync()
+            print("Sync lenh xong", flush=True)
+        except Exception as e:
+            print("Sync lenh loi (bo qua):", e, flush=True)
         if not auto_bxh.is_running(): auto_bxh.start()
         if not daily_rs.is_running(): daily_rs.start()
         if not check_tra.is_running(): check_tra.start()
         if not auto_ban_loop.is_running(): auto_ban_loop.start()
+        print("Tat ca vong lap da chay", flush=True)
     except Exception: print("on_ready loi",traceback.format_exc(),flush=True)
+
+@bot.event
+async def on_error(event, *args, **kwargs):
+    print("on_error:", event, traceback.format_exc(), flush=True)
 
 @bot.tree.command(name="datcuoc",description="Dat cuoc vao ban chung")
 @app_commands.autocomplete(tien=auto_tien)
@@ -349,12 +384,14 @@ async def taixiu(interaction:discord.Interaction,tien:str,lua_chon:app_commands.
 async def soxu(interaction:discord.Interaction):
     uid=str(interaction.user.id)
     await interaction.response.send_message(EMO_MONEY+" Xu thuong: "+fmt(get_bal(uid))+"\n"+EMO_GEM+" Xu VIP: "+fmt(get_vip(uid))+"\n"+EMO_FLY+" No: "+fmt(int(debts.get(uid,0))))
+
 @bot.tree.command(name="nhanxu",description="Nhan 50k/24h")
 async def nhanxu(interaction:discord.Interaction):
     uid=str(interaction.user.id); now=int(time.time())
     if now-last_claim.get(uid,0)<86400: await interaction.response.send_message(EMO_CLOCK+" Chua du 24h!",ephemeral=True); return
     last_claim[uid]=now; balances[uid]=get_bal(uid)+50000; save()
     await interaction.response.send_message(EMO_GIFT+" +50k! Co "+fmt(balances[uid]))
+
 @bot.tree.command(name="chuyentien",description="Chuyen xu")
 async def chuyentien(interaction:discord.Interaction,nguoi:discord.Member,tien:str):
     await interaction.response.defer()
@@ -364,6 +401,7 @@ async def chuyentien(interaction:discord.Interaction,nguoi:discord.Member,tien:s
     if tv<=0 or tv>bal: await interaction.followup.send("Khong du!"); return
     balances[uid]=bal-tv; balances[str(nguoi.id)]=get_bal(str(nguoi.id))+tv; save()
     await interaction.followup.send(EMO_OK+" Chuyen "+fmt(tv)+" cho "+nguoi.mention)
+
 @bot.tree.command(name="vayxu",description="Vay toi da 2M/ngay")
 async def vayxu(interaction:discord.Interaction,tien:str):
     await interaction.response.defer(); uid=str(interaction.user.id); now=int(time.time())
@@ -375,6 +413,7 @@ async def vayxu(interaction:discord.Interaction,tien:str):
     if int(debts.get(uid,0))==0: debts_time[uid]=now
     balances[uid]=get_bal(uid)+tv; debts[uid]=int(debts.get(uid,0))+tv; save()
     await interaction.followup.send("Vay "+fmt(tv)+"! No: "+fmt(debts[uid]))
+
 @bot.tree.command(name="trano",description="Tra no")
 async def trano(interaction:discord.Interaction,tien:str):
     await interaction.response.defer(); uid=str(interaction.user.id); d=int(debts.get(uid,0))
@@ -382,25 +421,4 @@ async def trano(interaction:discord.Interaction,tien:str):
     try: p=parse_tien(tien); tv=d if p=="ALL" else p
     except: await interaction.followup.send("Tien sai!"); return
     tv=min(tv,d)
-    if get_bal(uid)<tv:
-        banned_until[uid]=int(time.time())+BAN_GIO*3600; debts[uid]=0; debts_time.pop(uid,None); save()
-        await interaction.followup.send(EMO_BAN+" Khong du! Ban "+str(BAN_GIO)+"h!"); return
-    balances[uid]=get_bal(uid)-tv; debts[uid]=d-tv
-    if debts[uid]==0: debts_time.pop(uid,None)
-    save(); await interaction.followup.send("Tra "+fmt(tv)+"! Con "+fmt(debts[uid]))
-@bot.tree.command(name="cau",description="Xem cau choi le")
-async def cau(interaction:discord.Interaction):
-    await interaction.response.send_message(" ".join(cau_le[-20:]) if cau_le else "Chua co")
-@bot.tree.command(name="cauchung",description="Xem cau dat cuoc chung ca server")
-async def cauchung(interaction:discord.Interaction):
-    await interaction.response.send_message(" ".join(cau_chung[-20:]) if cau_chung else "Chua co")
-@bot.tree.command(name="bxh",description="Top 10 + bang thuong")
-async def bxh(interaction:discord.Interaction):
-    await interaction.response.defer(); await interaction.followup.send(bxh_text())
-@bot.tree.command(name="doixu",description="Doi 10 xu thuong = 1 xu VIP (len BXH)")
-@app_commands.autocomplete(tien=auto_tien)
-async def doixu(interaction:discord.Interaction,tien:str):
-    await interaction.response.defer(ephemeral=True)
-    uid=str(interaction.user.id)
-    bal=get_bal(uid)
-    try: p=parse_tien(tien); tv=bal if p
+    if ge
