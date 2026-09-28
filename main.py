@@ -85,9 +85,11 @@ def get_ban_embed(conlai, bets):
     dem_tai=sum(1 for v in bets.values() if v["chon"]=="tai")
     dem_xiu=sum(1 for v in bets.values() if v["chon"]=="xiu")
     done = int((BAN_TIME-conlai)/BAN_TIME*10)
+    if done<0: done=0
+    if done>10: done=10
     bar = "🟩"*done + "⬜"*(10-done)
     e = discord.Embed(title="🎲 TÀI XỈU CHUNG - ĐANG ĐẶT CƯỢC", color=0xffd700)
-    e.add_field(name="⏳ Thời gian", value=f"**{conlai}s**\n{bar}", inline=False)
+    e.add_field(name="⏳ Thời gian", value=f"**{max(0,conlai)}s**\n{bar}", inline=False)
     e.add_field(name="🔴 TÀI", value=f"💰 {fmt(tong_tai)}\n👥 {dem_tai} người", inline=True)
     e.add_field(name="🔵 XỈU", value=f"💰 {fmt(tong_xiu)}\n👥 {dem_xiu} người", inline=True)
     e.add_field(name="📈 Cầu", value=' '.join(cau_history[-10:]) if cau_history else "Chưa có", inline=False)
@@ -109,37 +111,59 @@ def get_ketqua_embed(x1,x2,x3,tong,kq,kn,bets):
     e.set_footer(text=f"Tổng {len(bets)} người chơi")
     return e
 
-async def chay_ban(guild_id, channel_id, msg_id):
-    for conlai in range(BAN_TIME-5, 0, -5):
-        await asyncio.sleep(5)
-        s=sessions.get(guild_id)
-        if not s: return
-        try:
-            ch=bot.get_channel(channel_id)
-            msg=await ch.fetch_message(msg_id)
-            await msg.edit(embed=get_ban_embed(conlai, s["bets"]), content=None)
-        except: pass
-    await asyncio.sleep(5)
-    s=sessions.pop(guild_id, None)
+async def update_ban_embed(guild_id):
+    s = sessions.get(guild_id)
     if not s: return
-    ch=bot.get_channel(channel_id)
-    bets=s["bets"]
-    try: msg=await ch.fetch_message(msg_id)
-    except: msg=None
+    try:
+        ch = bot.get_channel(s["channel_id"])
+        if not ch: return
+        msg = await ch.fetch_message(s["msg_id"])
+        conlai = max(0, int(s["end_time"] - time.time()))
+        await msg.edit(embed=get_ban_embed(conlai, s["bets"]), content=None)
+    except Exception as e:
+        print(f"[update_ban] loi: {e}", flush=True)
+
+async def chay_ban(guild_id):
+    s = sessions.get(guild_id)
+    if not s: return
+    print(f"[chay_ban] bat dau {guild_id}", flush=True)
+    while True:
+        await asyncio.sleep(5)
+        s = sessions.get(guild_id)
+        if not s:
+            print("[chay_ban] session mat", flush=True); return
+        conlai = int(s["end_time"] - time.time())
+        if conlai <= 0: break
+        await update_ban_embed(guild_id)
+        print(f"[chay_ban] update {conlai}s", flush=True)
+    s = sessions.pop(guild_id, None)
+    if not s: return
+    print("[chay_ban] het gio roll", flush=True)
+    bets = s["bets"]
+    ch = bot.get_channel(s["channel_id"])
     if not bets:
-        if msg: await msg.edit(content="⏰ Hết giờ mà không ai đặt cược!", embed=None)
+        try:
+            msg = await ch.fetch_message(s["msg_id"])
+            await msg.edit(content="⏰ Hết giờ mà không ai đặt cược!", embed=None)
+        except:
+            if ch: await ch.send("⏰ Hết giờ mà không ai đặt cược!")
         return
-    x1,x2,x3,tong,kn,kq=roll_chung()
-    cau_history.append(kn); save()
-    is_bao=(kn=="B")
+    x1,x2,x3,tong,kn,kq = roll_chung()
+    cau_history.append(kn)
+    is_bao = (kn=="B")
     for uid,info in bets.items():
         chon=info["chon"]; tien_v=info["tien"]
         win=(not is_bao) and (chon==("tai" if kn=="T" else "xiu"))
         if win: balances[uid]=get_bal(uid)+tien_v*2
     save()
-    emb=get_ketqua_embed(x1,x2,x3,tong,kq,kn,bets)
-    if msg: await msg.edit(embed=emb, content=None)
-    elif ch: await ch.send(embed=emb)
+    emb = get_ketqua_embed(x1,x2,x3,tong,kq,kn,bets)
+    try:
+        msg = await ch.fetch_message(s["msg_id"])
+        await msg.edit(embed=emb, content=None)
+        print("[chay_ban] da edit kq", flush=True)
+    except Exception as e:
+        print(f"[chay_ban] edit fail gui moi: {e}", flush=True)
+        if ch: await ch.send(embed=emb)
 
 TIEN_GOISAN=["all","1k","10k","100k","1m","10m","100m","1b","10b","1t"]
 async def tien_autocomplete(interaction: discord.Interaction, current: str):
@@ -171,10 +195,8 @@ async def auto_bxh_update():
             except: pass
         m=await ch.send(text); bxh_msg_id=m.id; save()
     except Exception as e: print(e,flush=True)
-
 @auto_bxh_update.before_loop
 async def before_bxh(): await bot.wait_until_ready()
-
 @tasks.loop(minutes=1)
 async def daily_reset_check():
     global last_reset_date
@@ -185,7 +207,6 @@ async def daily_reset_check():
         top=sorted(balances.items(),key=lambda x:x[1],reverse=True)[:10]
         for i,(uid,bal) in enumerate(top): balances[uid]=get_bal(uid)+REWARDS.get(i+1,0)
         save()
-
 @tasks.loop(minutes=1)
 async def check_no_tra():
     now=int(time.time()); changed=False
@@ -208,31 +229,38 @@ async def on_ready():
 async def moban(interaction: discord.Interaction):
     gid=interaction.guild_id
     if not gid: await interaction.response.send_message("❌ Chỉ dùng trong server!"); return
-    if gid in sessions: await interaction.response.send_message("⏳ Đang có bàn rồi!"); return
+    if gid in sessions: await interaction.response.send_message("⏳ Đang có bàn rồi!",ephemeral=True); return
     await interaction.response.defer()
-    sessions[gid]={"bets":{},"channel_id":interaction.channel_id}
+    end_time=time.time()+BAN_TIME
     msg=await interaction.followup.send(embed=get_ban_embed(BAN_TIME, {}))
-    sessions[gid]["task"]=asyncio.create_task(chay_ban(gid, interaction.channel_id, msg.id))
+    sessions[gid]={"bets":{},"channel_id":interaction.channel_id,"msg_id":msg.id,"end_time":end_time}
+    print(f"[moban] mo ban {gid} msg {msg.id}",flush=True)
+    asyncio.create_task(chay_ban(gid))
 
 @bot.tree.command(name="datcuoc",description="Đặt cược vào bàn chung")
 @app_commands.autocomplete(tien=tien_autocomplete)
 @app_commands.choices(lua_chon=[app_commands.Choice(name="Tài",value="tai"),app_commands.Choice(name="Xỉu",value="xiu")])
 async def datcuoc(interaction: discord.Interaction, lua_chon: app_commands.Choice[str], tien: str):
     gid=interaction.guild_id
-    if gid not in sessions: await interaction.response.send_message("❌ Chưa có bàn, dùng /moban!",ephemeral=True); return
+    s=sessions.get(gid)
+    if not s: await interaction.response.send_message("❌ Chưa có bàn, dùng /moban!",ephemeral=True); return
+    if time.time() >= s["end_time"]-2:
+        await interaction.response.send_message("⏰ Hết giờ đặt rồi!",ephemeral=True); return
     uid=str(interaction.user.id); now=int(time.time())
     if banned_until.get(uid,0)>now: await interaction.response.send_message("🚫 Bạn đang bị cấm!",ephemeral=True); return
     bal=get_bal(uid)
     try: p=parse_tien(tien); tien_v=bal if p=="ALL" else p
     except: await interaction.response.send_message("❌ Tiền không hợp lệ!",ephemeral=True); return
     if tien_v<=0 or tien_v>bal: await interaction.response.send_message(f"❌ Không đủ xu! Có {fmt(bal)}",ephemeral=True); return
-    chon=lua_chon.value; bets=sessions[gid]["bets"]
+    chon=lua_chon.value; bets=s["bets"]
     if uid in bets and bets[uid]["chon"]!=chon:
         await interaction.response.send_message("❌ Đã đặt cửa kia rồi!",ephemeral=True); return
     balances[uid]=bal-tien_v
-    bets[uid]={"chon":chon,"tien":bets[uid]["tien"]+tien_v if uid in bets else tien_v}
+    if uid in bets: bets[uid]["tien"]+=tien_v
+    else: bets[uid]={"chon":chon,"tien":tien_v}
     save()
     await interaction.response.send_message(f"✅ Đã đặt **{fmt(tien_v)}** vào **{chon.upper()}**",ephemeral=True)
+    await update_ban_embed(gid)
 
 @bot.tree.command(name="taixiu",description="Chơi lẻ")
 @app_commands.autocomplete(tien=tien_autocomplete)
@@ -252,22 +280,18 @@ async def taixiu(interaction: discord.Interaction, tien: str, lua_chon: app_comm
 @bot.tree.command(name="soxu",description="Xem xu")
 async def soxu(interaction: discord.Interaction):
     await interaction.response.send_message(f"💰 Bạn có **{fmt(get_bal(str(interaction.user.id)))} xu**")
-
 @bot.tree.command(name="cau",description="Xem cầu")
 async def cau(interaction: discord.Interaction):
     await interaction.response.send_message(f"📈 Cầu: `{' '.join(cau_history[-20:])}`" if cau_history else "Chưa có")
-
 @bot.tree.command(name="bxh",description="Top 10")
 async def bxh(interaction: discord.Interaction):
     await interaction.response.defer(); await interaction.followup.send(build_bxh_text())
-
 @bot.tree.command(name="nhanxu",description="Nhận 50k/24h")
 async def nhanxu(interaction: discord.Interaction):
     uid=str(interaction.user.id); now=int(time.time()); last=last_claim.get(uid,0)
     if 86400-(now-last)>0: await interaction.response.send_message("⏳ Chờ đã!",ephemeral=True); return
     last_claim[uid]=now; balances[uid]=get_bal(uid)+50000; save()
     await interaction.response.send_message(f"🎁 +50k! Có {fmt(balances[uid])}")
-
 @bot.tree.command(name="vayxu",description="Vay 2M/ngày")
 async def vayxu(interaction: discord.Interaction, tien: str):
     await interaction.response.defer()
@@ -280,7 +304,6 @@ async def vayxu(interaction: discord.Interaction, tien: str):
     if int(debts.get(uid,0))==0: debts_time[uid]=now
     balances[uid]=get_bal(uid)+tien_v; debts[uid]=int(debts.get(uid,0))+tien_v; save()
     await interaction.followup.send(f"💸 Vay {fmt(tien_v)}! Nợ: {fmt(debts[uid])}")
-
 @bot.tree.command(name="trano",description="Trả nợ")
 async def trano(interaction: discord.Interaction, tien: str):
     await interaction.response.defer()
@@ -295,7 +318,6 @@ async def trano(interaction: discord.Interaction, tien: str):
     balances[uid]=get_bal(uid)-tien_v; debts[uid]=debt-tien_v
     if debts[uid]==0: debts_time.pop(uid,None)
     save(); await interaction.followup.send(f"✅ Trả {fmt(tien_v)}! Còn nợ {fmt(debts[uid])}")
-
 @bot.tree.command(name="chuyentien",description="Chuyển xu")
 async def chuyentien(interaction: discord.Interaction, nguoi: discord.Member, tien: str):
     await interaction.response.defer()
@@ -305,13 +327,11 @@ async def chuyentien(interaction: discord.Interaction, nguoi: discord.Member, ti
     if tien_v<=0 or tien_v>bal: await interaction.followup.send("❌ Không đủ!"); return
     balances[uid]=bal-tien_v; balances[str(nguoi.id)]=get_bal(str(nguoi.id))+tien_v; save()
     await interaction.followup.send(f"✅ Chuyển {fmt(tien_v)} cho {nguoi.mention}")
-
 @bot.tree.command(name="congxu",description="Cộng xu (Admin)")
 async def congxu(interaction: discord.Interaction, nguoi: discord.Member, tien: str):
     if str(interaction.user.id) not in ADMIN_IDS: await interaction.response.send_message("❌!",ephemeral=True); return
     tien_v=parse_tien(tien); balances[str(nguoi.id)]=get_bal(str(nguoi.id))+tien_v; save()
     await interaction.response.send_message(f"✅ Cộng {fmt(tien_v)} cho {nguoi.mention}")
-
 @bot.tree.command(name="bocam",description="Bỏ cấm (Admin)")
 async def bocam(interaction: discord.Interaction, nguoi: discord.Member):
     if str(interaction.user.id) not in ADMIN_IDS: return
