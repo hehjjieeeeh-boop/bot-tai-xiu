@@ -180,7 +180,7 @@ async def auto_tien(i,cur):
     return out[:25]
 
 def bxh_text():
-    if not vip_balances: return "Chua co du lieu (doi xu thuong -> xu VIP bang /doixu de len BXH)"
+    if not vip_balances: return "🏆 TOP 10 XU VIP\n\nChua co du lieu (doi xu thuong -> xu VIP bang /doixu de len BXH)"
     top=sorted(vip_balances.items(),key=lambda x:x[1],reverse=True)[:10]
     t="🏆 TOP 10 XU VIP\n\n"
     for i,(u,b) in enumerate(top): t+=f"{i+1}. <@{u}> - {fmt(b)} VIP\n"
@@ -271,7 +271,8 @@ async def taixiu(interaction:discord.Interaction,tien:str,lua_chon:app_commands.
     a,b,c,tong,kn,kq=roll(cau_le)
     win=(kn!="B") and (chon==("tai" if kn=="T" else "xiu"))
     cau_le.append(kn); cau_history.append(kn); balances[uid]=bal+tv if win else bal-tv; save()
-    await interaction.followup.send(f"🎲 {a}-{b}-{c} ({tong}) => {kq}\n{'✅ THANG' if win else '❌ THUA'} {fmt(tv)}\n💰 Con: {fmt(balances[uid])}")
+    icon="✅ THANG" if win else "❌ THUA"
+    await interaction.followup.send(f"🎲 {a}-{b}-{c} ({tong}) => {kq}\n{icon} {fmt(tv)}\n💰 Con: {fmt(balances[uid])}")
 
 @bot.tree.command(name="soxu",description="Xem xu + no")
 async def soxu(interaction:discord.Interaction):
