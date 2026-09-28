@@ -40,7 +40,7 @@ DB="data.json"
 balances={}; cau_history=[]; cau_le=[]; cau_chung=[]; last_claim={}
 debts={}; vay_log={}; banned_until={}; debts_time={}; vip_balances={}; pending_rewards={}
 bxh_msg_id=None; last_reset_date=""
-sessions={}; ban_tasks={}
+sessions={}; ban_tasks={}; opening=set()
 
 def save():
     try:
@@ -126,37 +126,41 @@ async def update_ban(gid):
     except Exception as e: print("update loi",e,flush=True)
 
 async def chay_ban(gid):
-    while True:
-        await asyncio.sleep(1)
+    try:
+        while True:
+            await asyncio.sleep(1)
+            s=sessions.get(gid)
+            if not s: return
+            if time.time()>=s["end_time"]: break
+            await update_ban(gid)
         s=sessions.get(gid)
         if not s: return
-        if time.time()>=s["end_time"]: break
-        await update_ban(gid)
-    s=sessions.pop(gid,None); ban_tasks.pop(gid,None)
-    if not s: return
-    ch=await get_ch(s["channel_id"])
-    if not ch: return
-    bets=s["bets"]
-    if not bets:
-        try:
-            m=await ch.fetch_message(s["msg_id"]); await m.edit(content=EMO_HOUR+" Het gio, khong ai dat!",embed=None)
-        except: await ch.send(EMO_HOUR+" Het gio, khong ai dat!")
+        ch=await get_ch(s["channel_id"])
+        if not ch:
+            sessions.pop(gid,None); ban_tasks.pop(gid,None); return
+        bets=s["bets"]
+        if not bets:
+            try:
+                m=await ch.fetch_message(s["msg_id"]); await m.edit(content=EMO_HOUR+" Het gio, khong ai dat!",embed=None)
+            except: await ch.send(EMO_HOUR+" Het gio, khong ai dat!")
+        else:
+            a,b,c,tong,kn,kq=roll(cau_chung); cau_chung.append(kn); cau_history.append(kn)
+            for uid,inf in bets.items():
+                if kn!="B" and inf["chon"]==("tai" if kn=="T" else "xiu"):
+                    balances[uid]=get_bal(uid)+inf["tien"]*2
+            save()
+            emb=kq_embed(a,b,c,tong,kq,kn,bets)
+            try:
+                m=await ch.fetch_message(s["msg_id"]); await m.edit(content=None,embed=emb)
+            except: await ch.send(embed=emb)
         await asyncio.sleep(5)
+    finally:
+        sessions.pop(gid,None); ban_tasks.pop(gid,None)
         await auto_moban(gid)
-        return
-    a,b,c,tong,kn,kq=roll(cau_chung); cau_chung.append(kn); cau_history.append(kn)
-    for uid,inf in bets.items():
-        if kn!="B" and inf["chon"]==("tai" if kn=="T" else "xiu"):
-            balances[uid]=get_bal(uid)+inf["tien"]*2
-    save()
-    emb=kq_embed(a,b,c,tong,kq,kn,bets)
-    try:
-        m=await ch.fetch_message(s["msg_id"]); await m.edit(content=None,embed=emb)
-    except: await ch.send(embed=emb)
-    await asyncio.sleep(5)
-    await auto_moban(gid)
 
 async def auto_moban(gid):
+    if gid in sessions or gid in opening or gid in ban_tasks: return
+    opening.add(gid)
     try:
         ch=await get_ch(AUTO_BAN_CHANNEL_ID)
         if not ch: return
@@ -165,11 +169,12 @@ async def auto_moban(gid):
         sessions[gid]={"bets":{},"channel_id":ch.id,"msg_id":msg.id,"end_time":time.time()+BAN_TIME}
         ban_tasks[gid]=asyncio.create_task(chay_ban(gid))
     except Exception as e: print("auto_moban loi",e,flush=True)
+    finally: opening.discard(gid)
 
-@tasks.loop(minutes=1)
+@tasks.loop(seconds=30)
 async def auto_ban_loop():
     for g in list(bot.guilds):
-        if g.id not in sessions and g.id not in ban_tasks:
+        if g.id not in sessions and g.id not in ban_tasks and g.id not in opening:
             await auto_moban(g.id)
 @auto_ban_loop.before_loop
 async def _abl(): await bot.wait_until_ready()
