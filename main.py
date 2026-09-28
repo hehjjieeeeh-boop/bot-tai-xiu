@@ -1,9 +1,9 @@
-import discord, random, json, os, re, time, datetime, sys, asyncio
-from discord.ext import commands, tasks
-from discord import app_commands
+import 【entity-discord¦canonical_name=discord】, random, json, os, re, time, datetime, sys, asyncio
+from 【entity-discord¦canonical_name=discord】.ext import commands, tasks
+from 【entity-discord¦canonical_name=discord】 import app_commands
 
 TOKEN = os.getenv("DISCORD_TOKEN")
-intents = discord.Intents.default()
+intents = 【entity-discord¦canonical_name=discord】.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -80,6 +80,7 @@ EMO_DICE="🎲"; EMO_LOCK="🔒"; EMO_GREEN="🟢"; EMO_SQ_G="🟩"; EMO_SQ_W="�
 EMO_CLOCK="⏳"; EMO_RED="🔴"; EMO_BLUE="🔵"; EMO_MONEY="💰"
 EMO_OK="✅"; EMO_NO="❌"; EMO_CHART="📈"; EMO_CUP="🏆"
 EMO_GIFT="🎁"; EMO_GEM="💎"; EMO_FLY="💸"; EMO_BAN="🚫"; EMO_HOUR="⏰"
+TABLE_TITLE=EMO_DICE+" TAI XIU CHUNG"
 
 def ban_embed(conlai,bets,locked=False):
     tt=sum(v["tien"] for v in bets.values() if v["chon"]=="tai")
@@ -89,7 +90,7 @@ def ban_embed(conlai,bets,locked=False):
     done=int((BAN_TIME-conlai)/BAN_TIME*10); done=max(0,min(10,done))
     bar=EMO_SQ_G*done+EMO_SQ_W*(10-done)
     st=EMO_LOCK+" CHOT SO - Khong dat them!" if locked else EMO_GREEN+" Dang nhan cuoc"
-    e=discord.Embed(title=EMO_DICE+" TAI XIU CHUNG",description=st,color=0xffd700)
+    e=discord.Embed(title=TABLE_TITLE,description=st,color=0xffd700)
     e.add_field(name=EMO_CLOCK+" Con lai",value="**"+str(max(0,conlai))+"s**\n"+bar,inline=False)
     e.add_field(name=EMO_RED+" TAI",value=str(dt)+" nguoi\n"+EMO_MONEY+" "+fmt(tt),inline=True)
     e.add_field(name=EMO_BLUE+" XIU",value=str(dx)+" nguoi\n"+EMO_MONEY+" "+fmt(tx),inline=True)
@@ -113,6 +114,16 @@ async def get_ch(cid):
     if c: return c
     try: return await bot.fetch_channel(cid)
     except: return None
+
+async def kenh_dang_co_ban(ch):
+    try:
+        async for m in ch.history(limit=8):
+            if m.author.id!=bot.user.id: continue
+            for em in m.embeds:
+                if em.title==TABLE_TITLE and em.description and ("Dang nhan cuoc" in em.description or "CHOT SO" in em.description):
+                    return True
+    except: pass
+    return False
 
 async def update_ban(gid):
     s=sessions.get(gid)
@@ -165,6 +176,7 @@ async def auto_moban(gid):
         ch=await get_ch(AUTO_BAN_CHANNEL_ID)
         if not ch: return
         if gid in sessions: return
+        if await kenh_dang_co_ban(ch): return
         msg=await ch.send(embed=ban_embed(BAN_TIME,{},False))
         sessions[gid]={"bets":{},"channel_id":ch.id,"msg_id":msg.id,"end_time":time.time()+BAN_TIME}
         ban_tasks[gid]=asyncio.create_task(chay_ban(gid))
