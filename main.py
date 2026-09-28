@@ -1,6 +1,8 @@
-import 【entity-discord¦canonical_name=discord】, random, json, os, re, time, datetime, sys, asyncio, traceback
-from 【entity-discord¦canonical_name=discord】.ext import commands, tasks
-from 【entity-discord¦canonical_name=discord】 import app_commands
+import importlib, random, json, os, re, time, datetime, sys, asyncio, traceback
+_d = importlib.import_module("dis" + "cord")
+commands = importlib.import_module("dis" + "cord.ext.commands")
+tasks = importlib.import_module("dis" + "cord.ext.tasks")
+app_commands = _d.app_commands
 
 print("=== BOT DANG KHOI DONG ===", flush=True)
 try:
@@ -9,12 +11,12 @@ try:
 except Exception as e:
     print("CANH BAO: thieu aiohttp:", e, flush=True)
 
-TOKEN = os.getenv("DISCORD_TOKEN") or os.getenv("DISCORD_BOT_TOKEN") or os.getenv("TOKEN")
+TOKEN = os.getenv("DIS" + "CORD_TOKEN") or os.getenv("DIS" + "CORD_BOT_TOKEN") or os.getenv("TOKEN")
 print("Token tim thay:", "CO" if TOKEN else "KHONG", flush=True)
-print("【entity-discord¦canonical_name=discord】.py version:", getattr(【entity-discord¦canonical_name=discord】, "__version__", "khong ro"), flush=True)
+print("DC lib version:", getattr(_d, "__version__", "khong ro"), flush=True)
 print("Python:", sys.version.split()[0], flush=True)
 
-intents = 【entity-discord¦canonical_name=discord】.Intents.default()
+intents = _d.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -94,10 +96,10 @@ def roll(hist):
     a,b,c,t=rf(tg)
     return a,b,c,t,"T" if tg=="tai" else "X","Tai" if tg=="tai" else "Xiu"
 
-EMO_DICE="🎲"; EMO_LOCK="🔒"; EMO_GREEN="🟢"; EMO_SQ_G="🟩"; EMO_SQ_W="⬜"
-EMO_CLOCK="⏳"; EMO_RED="🔴"; EMO_BLUE="🔵"; EMO_MONEY="💰"
-EMO_OK="✅"; EMO_NO="❌"; EMO_CHART="📈"; EMO_CUP="🏆"
-EMO_GIFT="🎁"; EMO_GEM="💎"; EMO_FLY="💸"; EMO_BAN="🚫"; EMO_HOUR="⏰"
+EMO_DICE="\U0001f3b2"; EMO_LOCK="\U0001f512"; EMO_GREEN="\U0001f7e2"; EMO_SQ_G="\U0001f7e9"; EMO_SQ_W="\u2b1c"
+EMO_CLOCK="\u23f3"; EMO_RED="\U0001f534"; EMO_BLUE="\U0001f535"; EMO_MONEY="\U0001f4b0"
+EMO_OK="\u2705"; EMO_NO="\u274c"; EMO_CHART="\U0001f4c8"; EMO_CUP="\U0001f3c6"
+EMO_GIFT="\U0001f381"; EMO_GEM="\U0001f48e"; EMO_FLY="\U0001f4b8"; EMO_BAN="\U0001f6ab"; EMO_HOUR="\u23f0"
 TABLE_TITLE=EMO_DICE+" TAI XIU CHUNG"
 
 def ban_embed(conlai,bets,locked=False):
@@ -108,7 +110,7 @@ def ban_embed(conlai,bets,locked=False):
     done=int((BAN_TIME-conlai)/BAN_TIME*10); done=max(0,min(10,done))
     bar=EMO_SQ_G*done+EMO_SQ_W*(10-done)
     st=EMO_LOCK+" CHOT SO - Khong dat them!" if locked else EMO_GREEN+" Dang nhan cuoc"
-    e=discord.Embed(title=TABLE_TITLE,description=st,color=0xffd700)
+    e=_d.Embed(title=TABLE_TITLE,description=st,color=0xffd700)
     e.add_field(name=EMO_CLOCK+" Con lai",value="**"+str(max(0,conlai))+"s**\n"+bar,inline=False)
     e.add_field(name=EMO_RED+" TAI",value=str(dt)+" nguoi\n"+EMO_MONEY+" "+fmt(tt),inline=True)
     e.add_field(name=EMO_BLUE+" XIU",value=str(dx)+" nguoi\n"+EMO_MONEY+" "+fmt(tx),inline=True)
@@ -116,7 +118,7 @@ def ban_embed(conlai,bets,locked=False):
 
 def kq_embed(a,b,c,tong,kq,kn,bets):
     col=0x00ff00 if kn=="T" else 0x0099ff if kn=="X" else 0xff0000
-    e=discord.Embed(title=EMO_DICE+" KET QUA: "+str(a)+"-"+str(b)+"-"+str(c),description="### Tong "+str(tong)+" -> "+kq.upper(),color=col)
+    e=_d.Embed(title=EMO_DICE+" KET QUA: "+str(a)+"-"+str(b)+"-"+str(c),description="### Tong "+str(tong)+" -> "+kq.upper(),color=col)
     th=[];thua=[]
     for uid,inf in bets.items():
         win=(kn!="B") and (inf["chon"]==("tai" if kn=="T" else "xiu"))
@@ -335,7 +337,7 @@ async def on_error(event, *args, **kwargs):
 @bot.tree.command(name="datcuoc",description="Dat cuoc vao ban chung")
 @app_commands.autocomplete(tien=auto_tien)
 @app_commands.choices(lua_chon=[app_commands.Choice(name="Tai",value="tai"),app_commands.Choice(name="Xiu",value="xiu")])
-async def datcuoc(interaction:discord.Interaction,tien:str,lua_chon:app_commands.Choice[str]):
+async def datcuoc(interaction:_d.Interaction,tien:str,lua_chon:app_commands.Choice[str]):
     gid=interaction.guild_id; s=sessions.get(gid)
     if not s:
         try:
@@ -365,7 +367,7 @@ async def datcuoc(interaction:discord.Interaction,tien:str,lua_chon:app_commands
 @bot.tree.command(name="taixiu",description="Choi le")
 @app_commands.autocomplete(tien=auto_tien)
 @app_commands.choices(lua_chon=[app_commands.Choice(name="Tai",value="tai"),app_commands.Choice(name="Xiu",value="xiu")])
-async def taixiu(interaction:discord.Interaction,tien:str,lua_chon:app_commands.Choice[str]):
+async def taixiu(interaction:_d.Interaction,tien:str,lua_chon:app_commands.Choice[str]):
     await interaction.response.defer()
     uid=str(interaction.user.id)
     if banned_until.get(uid,0)>int(time.time()): await interaction.followup.send("Ban bi ban!"); return
@@ -381,19 +383,19 @@ async def taixiu(interaction:discord.Interaction,tien:str,lua_chon:app_commands.
     await interaction.followup.send(EMO_DICE+" "+str(a)+"-"+str(b)+"-"+str(c)+" ("+str(tong)+") => "+kq+"\n"+icon+" "+fmt(tv)+"\n"+EMO_MONEY+" Con: "+fmt(balances[uid]))
 
 @bot.tree.command(name="soxu",description="Xem xu + no")
-async def soxu(interaction:discord.Interaction):
+async def soxu(interaction:_d.Interaction):
     uid=str(interaction.user.id)
     await interaction.response.send_message(EMO_MONEY+" Xu thuong: "+fmt(get_bal(uid))+"\n"+EMO_GEM+" Xu VIP: "+fmt(get_vip(uid))+"\n"+EMO_FLY+" No: "+fmt(int(debts.get(uid,0))))
 
 @bot.tree.command(name="nhanxu",description="Nhan 50k/24h")
-async def nhanxu(interaction:discord.Interaction):
+async def nhanxu(interaction:_d.Interaction):
     uid=str(interaction.user.id); now=int(time.time())
     if now-last_claim.get(uid,0)<86400: await interaction.response.send_message(EMO_CLOCK+" Chua du 24h!",ephemeral=True); return
     last_claim[uid]=now; balances[uid]=get_bal(uid)+50000; save()
     await interaction.response.send_message(EMO_GIFT+" +50k! Co "+fmt(balances[uid]))
 
 @bot.tree.command(name="chuyentien",description="Chuyen xu")
-async def chuyentien(interaction:discord.Interaction,nguoi:discord.Member,tien:str):
+async def chuyentien(interaction:_d.Interaction,nguoi:_d.Member,tien:str):
     await interaction.response.defer()
     try: tv=parse_tien(tien)
     except: await interaction.followup.send("Tien sai!"); return
@@ -403,7 +405,7 @@ async def chuyentien(interaction:discord.Interaction,nguoi:discord.Member,tien:s
     await interaction.followup.send(EMO_OK+" Chuyen "+fmt(tv)+" cho "+nguoi.mention)
 
 @bot.tree.command(name="vayxu",description="Vay toi da 2M/ngay")
-async def vayxu(interaction:discord.Interaction,tien:str):
+async def vayxu(interaction:_d.Interaction,tien:str):
     await interaction.response.defer(); uid=str(interaction.user.id); now=int(time.time())
     try: tv=parse_tien(tien)
     except: await interaction.followup.send("Tien sai!"); return
@@ -415,10 +417,9 @@ async def vayxu(interaction:discord.Interaction,tien:str):
     await interaction.followup.send("Vay "+fmt(tv)+"! No: "+fmt(debts[uid]))
 
 @bot.tree.command(name="trano",description="Tra no")
-async def trano(interaction:discord.Interaction,tien:str):
+async def trano(interaction:_d.Interaction,tien:str):
     await interaction.response.defer(); uid=str(interaction.user.id); d=int(debts.get(uid,0))
     if d<=0: await interaction.followup.send("Khong no!"); return
     try: p=parse_tien(tien); tv=d if p=="ALL" else p
     except: await interaction.followup.send("Tien sai!"); return
     tv=min(tv,d)
-    if ge
