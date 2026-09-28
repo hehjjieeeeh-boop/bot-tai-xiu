@@ -30,10 +30,10 @@ def parse_tien(s):
 
 def fmt(n):
     n=int(n)
-    if n>=10**12: return f"{n/10**12:.1f}".rstrip('0').rstrip('.')+"T"
-    if n>=10**9: return f"{n/10**9:.1f}".rstrip('0').rstrip('.')+"B"
-    if n>=10**6: return f"{n/10**6:.1f}".rstrip('0').rstrip('.')+"M"
-    if n>=10**3: return f"{n/10**3:.1f}".rstrip('0').rstrip('.')+"k"
+    if n>=10**12: return f"{n/10**12:.1f}".rstrip("0").rstrip(".")+"T"
+    if n>=10**9: return f"{n/10**9:.1f}".rstrip("0").rstrip(".")+"B"
+    if n>=10**6: return f"{n/10**6:.1f}".rstrip("0").rstrip(".")+"M"
+    if n>=10**3: return f"{n/10**3:.1f}".rstrip("0").rstrip(".")+"k"
     return str(n)
 
 DB="data.json"
@@ -76,31 +76,36 @@ def roll(hist):
     a,b,c,t=rf(tg)
     return a,b,c,t,"T" if tg=="tai" else "X","Tai" if tg=="tai" else "Xiu"
 
+EMO_DICE="🎲"; EMO_LOCK="🔒"; EMO_GREEN="🟢"; EMO_SQ_G="🟩"; EMO_SQ_W="⬜"
+EMO_CLOCK="⏳"; EMO_RED="🔴"; EMO_BLUE="🔵"; EMO_MONEY="💰"
+EMO_OK="✅"; EMO_NO="❌"; EMO_CHART="📈"; EMO_CUP="🏆"
+EMO_GIFT="🎁"; EMO_GEM="💎"; EMO_FLY="💸"; EMO_BAN="🚫"; EMO_HOUR="⏰"
+
 def ban_embed(conlai,bets,locked=False):
     tt=sum(v["tien"] for v in bets.values() if v["chon"]=="tai")
     tx=sum(v["tien"] for v in bets.values() if v["chon"]=="xiu")
     dt=sum(1 for v in bets.values() if v["chon"]=="tai")
     dx=sum(1 for v in bets.values() if v["chon"]=="xiu")
     done=int((BAN_TIME-conlai)/BAN_TIME*10); done=max(0,min(10,done))
-    bar="🟩"*done+"⬜"*(10-done)
-    st="🔒 CHOT SO - Khong dat them!" if locked else "🟢 Dang nhan cuoc"
-    e=discord.Embed(title="🎲 TAI XIU CHUNG",description=st,color=0xffd700)
-    e.add_field(name="⏳ Con lai",value=f"**{max(0,conlai)}s**\n{bar}",inline=False)
-    e.add_field(name="🔴 TAI",value=f"{dt} nguoi\n💰 {fmt(tt)}",inline=True)
-    e.add_field(name="🔵 XIU",value=f"{dx} nguoi\n💰 {fmt(tx)}",inline=True)
+    bar=EMO_SQ_G*done+EMO_SQ_W*(10-done)
+    st=EMO_LOCK+" CHOT SO - Khong dat them!" if locked else EMO_GREEN+" Dang nhan cuoc"
+    e=discord.Embed(title=EMO_DICE+" TAI XIU CHUNG",description=st,color=0xffd700)
+    e.add_field(name=EMO_CLOCK+" Con lai",value="**"+str(max(0,conlai))+"s**\n"+bar,inline=False)
+    e.add_field(name=EMO_RED+" TAI",value=str(dt)+" nguoi\n"+EMO_MONEY+" "+fmt(tt),inline=True)
+    e.add_field(name=EMO_BLUE+" XIU",value=str(dx)+" nguoi\n"+EMO_MONEY+" "+fmt(tx),inline=True)
     return e
 
 def kq_embed(a,b,c,tong,kq,kn,bets):
     col=0x00ff00 if kn=="T" else 0x0099ff if kn=="X" else 0xff0000
-    e=discord.Embed(title=f"🎲 KET QUA: {a}-{b}-{c}",description=f"### Tong {tong} -> {kq.upper()}",color=col)
+    e=discord.Embed(title=EMO_DICE+" KET QUA: "+str(a)+"-"+str(b)+"-"+str(c),description="### Tong "+str(tong)+" -> "+kq.upper(),color=col)
     th=[];thua=[]
     for uid,inf in bets.items():
         win=(kn!="B") and (inf["chon"]==("tai" if kn=="T" else "xiu"))
-        if win: th.append(f"✅ <@{uid}> +{fmt(inf['tien'])}")
-        else: thua.append(f"❌ <@{uid}> -{fmt(inf['tien'])}")
-    if th: e.add_field(name=f"Thang ({len(th)})",value="\n".join(th[:20]),inline=False)
-    if thua: e.add_field(name=f"Thua ({len(thua)})",value="\n".join(thua[:20]),inline=False)
-    e.add_field(name="📈 Cau",value=" ".join(cau_chung[-10:]),inline=False)
+        if win: th.append(EMO_OK+" <@"+uid+"> +"+fmt(inf["tien"]))
+        else: thua.append(EMO_NO+" <@"+uid+"> -"+fmt(inf["tien"]))
+    if th: e.add_field(name="Thang ("+str(len(th))+")",value="\n".join(th[:20]),inline=False)
+    if thua: e.add_field(name="Thua ("+str(len(thua))+")",value="\n".join(thua[:20]),inline=False)
+    e.add_field(name=EMO_CHART+" Cau",value=" ".join(cau_chung[-10:]),inline=False)
     return e
 
 async def get_ch(cid):
@@ -134,8 +139,8 @@ async def chay_ban(gid):
     bets=s["bets"]
     if not bets:
         try:
-            m=await ch.fetch_message(s["msg_id"]); await m.edit(content="⏰ Het gio, khong ai dat!",embed=None)
-        except: await ch.send("⏰ Het gio, khong ai dat!")
+            m=await ch.fetch_message(s["msg_id"]); await m.edit(content=EMO_HOUR+" Het gio, khong ai dat!",embed=None)
+        except: await ch.send(EMO_HOUR+" Het gio, khong ai dat!")
         await asyncio.sleep(5)
         await auto_moban(gid)
         return
@@ -180,10 +185,10 @@ async def auto_tien(i,cur):
     return out[:25]
 
 def bxh_text():
-    if not vip_balances: return "🏆 TOP 10 XU VIP\n\nChua co du lieu (doi xu thuong -> xu VIP bang /doixu de len BXH)"
+    if not vip_balances: return EMO_CUP+" TOP 10 XU VIP\n\nChua co du lieu (doi xu thuong -> xu VIP bang /doixu de len BXH)"
     top=sorted(vip_balances.items(),key=lambda x:x[1],reverse=True)[:10]
-    t="🏆 TOP 10 XU VIP\n\n"
-    for i,(u,b) in enumerate(top): t+=f"{i+1}. <@{u}> - {fmt(b)} VIP\n"
+    t=EMO_CUP+" TOP 10 XU VIP\n\n"
+    for i,(u,b) in enumerate(top): t+=str(i+1)+". <@"+u+"> - "+fmt(b)+" VIP\n"
     return t
 
 @tasks.loop(hours=2)
@@ -240,20 +245,20 @@ async def on_ready():
 async def datcuoc(interaction:discord.Interaction,tien:str,lua_chon:app_commands.Choice[str]):
     gid=interaction.guild_id; s=sessions.get(gid)
     if not s: await interaction.response.send_message("Chua co ban! Doi bot mo ban moi.",ephemeral=True); return
-    if time.time()>=s["end_time"]-5: await interaction.response.send_message("🔒 Da chot so!",ephemeral=True); return
+    if time.time()>=s["end_time"]-5: await interaction.response.send_message(EMO_LOCK+" Da chot so!",ephemeral=True); return
     uid=str(interaction.user.id)
     if banned_until.get(uid,0)>int(time.time()): await interaction.response.send_message("Ban bi ban!",ephemeral=True); return
     bal=get_bal(uid)
     try: p=parse_tien(tien); tv=bal if p=="ALL" else p
     except: await interaction.response.send_message("Tien sai!",ephemeral=True); return
-    if tv<=0 or tv>bal: await interaction.response.send_message(f"Khong du! Co {fmt(bal)}",ephemeral=True); return
+    if tv<=0 or tv>bal: await interaction.response.send_message("Khong du! Co "+fmt(bal),ephemeral=True); return
     chon=lua_chon.value; bets=s["bets"]
     if uid in bets and bets[uid]["chon"]!=chon: await interaction.response.send_message("Da dat cua kia!",ephemeral=True); return
     balances[uid]=bal-tv
     if uid in bets: bets[uid]["tien"]+=tv
     else: bets[uid]={"chon":chon,"tien":tv}
     save()
-    await interaction.response.send_message(f"✅ {fmt(tv)} vao {chon.upper()}",ephemeral=True)
+    await interaction.response.send_message(EMO_OK+" "+fmt(tv)+" vao "+chon.upper(),ephemeral=True)
     await update_ban(gid)
 
 @bot.tree.command(name="taixiu",description="Choi le")
@@ -266,24 +271,24 @@ async def taixiu(interaction:discord.Interaction,tien:str,lua_chon:app_commands.
     bal=get_bal(uid)
     try: p=parse_tien(tien); tv=bal if p=="ALL" else p
     except: await interaction.followup.send("Tien sai!"); return
-    if tv>bal: await interaction.followup.send(f"Khong du! Co {fmt(bal)}"); return
+    if tv>bal: await interaction.followup.send("Khong du! Co "+fmt(bal)); return
     chon=lua_chon.value
     a,b,c,tong,kn,kq=roll(cau_le)
     win=(kn!="B") and (chon==("tai" if kn=="T" else "xiu"))
     cau_le.append(kn); cau_history.append(kn); balances[uid]=bal+tv if win else bal-tv; save()
-    icon="✅ THANG" if win else "❌ THUA"
-    await interaction.followup.send(f"🎲 {a}-{b}-{c} ({tong}) => {kq}\n{icon} {fmt(tv)}\n💰 Con: {fmt(balances[uid])}")
+    icon=EMO_OK+" THANG" if win else EMO_NO+" THUA"
+    await interaction.followup.send(EMO_DICE+" "+str(a)+"-"+str(b)+"-"+str(c)+" ("+str(tong)+") => "+kq+"\n"+icon+" "+fmt(tv)+"\n"+EMO_MONEY+" Con: "+fmt(balances[uid]))
 
 @bot.tree.command(name="soxu",description="Xem xu + no")
 async def soxu(interaction:discord.Interaction):
     uid=str(interaction.user.id)
-    await interaction.response.send_message(f"💰 Xu thuong: {fmt(get_bal(uid))}\n💎 Xu VIP: {fmt(get_vip(uid))}\n💸 No: {fmt(int(debts.get(uid,0)))}")
+    await interaction.response.send_message(EMO_MONEY+" Xu thuong: "+fmt(get_bal(uid))+"\n"+EMO_GEM+" Xu VIP: "+fmt(get_vip(uid))+"\n"+EMO_FLY+" No: "+fmt(int(debts.get(uid,0))))
 @bot.tree.command(name="nhanxu",description="Nhan 50k/24h")
 async def nhanxu(interaction:discord.Interaction):
     uid=str(interaction.user.id); now=int(time.time())
-    if now-last_claim.get(uid,0)<86400: await interaction.response.send_message("⏳ Chua du 24h!",ephemeral=True); return
+    if now-last_claim.get(uid,0)<86400: await interaction.response.send_message(EMO_CLOCK+" Chua du 24h!",ephemeral=True); return
     last_claim[uid]=now; balances[uid]=get_bal(uid)+50000; save()
-    await interaction.response.send_message(f"🎁 +50k! Co {fmt(balances[uid])}")
+    await interaction.response.send_message(EMO_GIFT+" +50k! Co "+fmt(balances[uid]))
 @bot.tree.command(name="chuyentien",description="Chuyen xu")
 async def chuyentien(interaction:discord.Interaction,nguoi:discord.Member,tien:str):
     await interaction.response.defer()
@@ -292,7 +297,7 @@ async def chuyentien(interaction:discord.Interaction,nguoi:discord.Member,tien:s
     uid=str(interaction.user.id); bal=get_bal(uid)
     if tv<=0 or tv>bal: await interaction.followup.send("Khong du!"); return
     balances[uid]=bal-tv; balances[str(nguoi.id)]=get_bal(str(nguoi.id))+tv; save()
-    await interaction.followup.send(f"✅ Chuyen {fmt(tv)} cho {nguoi.mention}")
+    await interaction.followup.send(EMO_OK+" Chuyen "+fmt(tv)+" cho "+nguoi.mention)
 @bot.tree.command(name="vayxu",description="Vay toi da 2M/ngay")
 async def vayxu(interaction:discord.Interaction,tien:str):
     await interaction.response.defer(); uid=str(interaction.user.id); now=int(time.time())
@@ -303,7 +308,7 @@ async def vayxu(interaction:discord.Interaction,tien:str):
     logs.append([now,tv]); vay_log[uid]=logs
     if int(debts.get(uid,0))==0: debts_time[uid]=now
     balances[uid]=get_bal(uid)+tv; debts[uid]=int(debts.get(uid,0))+tv; save()
-    await interaction.followup.send(f"Vay {fmt(tv)}! No: {fmt(debts[uid])}")
+    await interaction.followup.send("Vay "+fmt(tv)+"! No: "+fmt(debts[uid]))
 @bot.tree.command(name="trano",description="Tra no")
 async def trano(interaction:discord.Interaction,tien:str):
     await interaction.response.defer(); uid=str(interaction.user.id); d=int(debts.get(uid,0))
@@ -313,10 +318,10 @@ async def trano(interaction:discord.Interaction,tien:str):
     tv=min(tv,d)
     if get_bal(uid)<tv:
         banned_until[uid]=int(time.time())+BAN_GIO*3600; debts[uid]=0; debts_time.pop(uid,None); save()
-        await interaction.followup.send(f"🚫 Khong du! Ban {BAN_GIO}h!"); return
+        await interaction.followup.send(EMO_BAN+" Khong du! Ban "+str(BAN_GIO)+"h!"); return
     balances[uid]=get_bal(uid)-tv; debts[uid]=d-tv
     if debts[uid]==0: debts_time.pop(uid,None)
-    save(); await interaction.followup.send(f"Tra {fmt(tv)}! Con {fmt(debts[uid])}")
+    save(); await interaction.followup.send("Tra "+fmt(tv)+"! Con "+fmt(debts[uid]))
 @bot.tree.command(name="cau",description="Xem cau choi le")
 async def cau(interaction:discord.Interaction):
     await interaction.response.send_message(" ".join(cau_le[-20:]) if cau_le else "Chua co")
@@ -334,23 +339,23 @@ async def doixu(interaction:discord.Interaction,tien:str):
     bal=get_bal(uid)
     try: p=parse_tien(tien); tv=bal if p=="ALL" else p
     except: await interaction.followup.send("Tien sai!",ephemeral=True); return
-    if tv<10: await interaction.followup.send("❌ Toi thieu 10 xu thuong!",ephemeral=True); return
-    if tv>bal: await interaction.followup.send(f"Khong du! Co {fmt(bal)}",ephemeral=True); return
+    if tv<10: await interaction.followup.send(EMO_NO+" Toi thieu 10 xu thuong!",ephemeral=True); return
+    if tv>bal: await interaction.followup.send("Khong du! Co "+fmt(bal),ephemeral=True); return
     vip_gain=tv//10
-    if vip_gain<=0: await interaction.followup.send("❌ So xu khong du doi!",ephemeral=True); return
+    if vip_gain<=0: await interaction.followup.send(EMO_NO+" So xu khong du doi!",ephemeral=True); return
     cost=vip_gain*10
     balances[uid]=bal-cost; vip_balances[uid]=get_vip(uid)+vip_gain; save()
-    await interaction.followup.send(f"✅ Doi {fmt(cost)} xu thuong -> {fmt(vip_gain)} xu VIP!\n💎 Xu VIP: {fmt(get_vip(uid))}",ephemeral=True)
+    await interaction.followup.send(EMO_OK+" Doi "+fmt(cost)+" xu thuong -> "+fmt(vip_gain)+" xu VIP!\n"+EMO_GEM+" Xu VIP: "+fmt(get_vip(uid)),ephemeral=True)
 @bot.tree.command(name="congxu",description="Cong xu Admin")
 async def congxu(interaction:discord.Interaction,nguoi:discord.Member,tien:str):
     if str(interaction.user.id) not in ADMIN_IDS: await interaction.response.send_message("No!",ephemeral=True); return
     tv=parse_tien(tien); balances[str(nguoi.id)]=get_bal(str(nguoi.id))+tv; save()
-    await interaction.response.send_message(f"Cong {fmt(tv)} cho {nguoi.mention}")
+    await interaction.response.send_message("Cong "+fmt(tv)+" cho "+nguoi.mention)
 @bot.tree.command(name="bocam",description="Go ban Admin")
 async def bocam(interaction:discord.Interaction,nguoi:discord.Member):
     if str(interaction.user.id) not in ADMIN_IDS: return
     banned_until.pop(str(nguoi.id),None); save()
-    await interaction.response.send_message(f"Go ban {nguoi.mention}")
+    await interaction.response.send_message("Go ban "+nguoi.mention)
 
 if __name__=="__main__":
     if not TOKEN: print("Thieu TOKEN",flush=True); sys.exit(1)
