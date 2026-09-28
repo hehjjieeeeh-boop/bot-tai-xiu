@@ -1,9 +1,9 @@
-import 【entity-discord¦canonical_name=discord】, random, json, os, re, time, datetime, sys, asyncio
-from 【entity-discord¦canonical_name=discord】.ext import commands, tasks
-from 【entity-discord¦canonical_name=discord】 import app_commands
+import discord, random, json, os, re, time, datetime, sys, asyncio, traceback
+from discord.ext import commands, tasks
+from discord import app_commands
 
-TOKEN = os.getenv("DISCORD_TOKEN")
-intents = 【entity-discord¦canonical_name=discord】.Intents.default()
+TOKEN = os.getenv("DISCORD_TOKEN") or os.getenv("DISCORD_BOT_TOKEN") or os.getenv("TOKEN")
+intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -118,11 +118,11 @@ async def get_ch(cid):
 async def kenh_dang_co_ban(ch):
     try:
         async for m in ch.history(limit=8):
-            if m.author.id!=bot.user.id: continue
+            if bot.user and m.author.id!=bot.user.id: continue
             for em in m.embeds:
                 if em.title==TABLE_TITLE and em.description and ("Dang nhan cuoc" in em.description or "CHOT SO" in em.description):
                     return True
-    except: pass
+    except Exception as e: print("kenh_dang_co_ban loi",e,flush=True)
     return False
 
 async def update_ban(gid):
@@ -165,6 +165,7 @@ async def chay_ban(gid):
                 m=await ch.fetch_message(s["msg_id"]); await m.edit(content=None,embed=emb)
             except: await ch.send(embed=emb)
         await asyncio.sleep(5)
+    except Exception as e: print("chay_ban loi",traceback.format_exc(),flush=True)
     finally:
         sessions.pop(gid,None); ban_tasks.pop(gid,None)
         await auto_moban(gid)
@@ -180,7 +181,7 @@ async def auto_moban(gid):
         msg=await ch.send(embed=ban_embed(BAN_TIME,{},False))
         sessions[gid]={"bets":{},"channel_id":ch.id,"msg_id":msg.id,"end_time":time.time()+BAN_TIME}
         ban_tasks[gid]=asyncio.create_task(chay_ban(gid))
-    except Exception as e: print("auto_moban loi",e,flush=True)
+    except Exception as e: print("auto_moban loi",traceback.format_exc(),flush=True)
     finally: opening.discard(gid)
 
 @tasks.loop(seconds=30)
@@ -218,26 +219,28 @@ async def auto_bxh():
             try: await (await ch.fetch_message(bxh_msg_id)).edit(content=t); return
             except: pass
         m=await ch.send(t); bxh_msg_id=m.id; save()
-    except Exception as e: print(e,flush=True)
+    except Exception as e: print("auto_bxh loi",e,flush=True)
 @auto_bxh.before_loop
 async def _b(): await bot.wait_until_ready()
 @tasks.loop(minutes=1)
 async def daily_rs():
     global last_reset_date
-    vn=datetime.datetime.utcnow()+datetime.timedelta(hours=7)
-    td=vn.strftime("%Y-%m-%d")
-    if vn.hour==0 and vn.minute<2 and last_reset_date!=td:
-        last_reset_date=td
-        top=sorted(vip_balances.items(),key=lambda x:x[1],reverse=True)[:10]
-        rewards_given={}
-        for i,(u,b) in enumerate(top):
-            rw=REWARDS.get(i+1,0)
-            if rw>0: rewards_given[u]=rw
-        vip_balances.clear()
-        for u,rw in rewards_given.items():
-            vip_balances[u]=rw
-        pending_rewards.clear()
-        save()
+    try:
+        vn=datetime.datetime.utcnow()+datetime.timedelta(hours=7)
+        td=vn.strftime("%Y-%m-%d")
+        if vn.hour==0 and vn.minute<2 and last_reset_date!=td:
+            last_reset_date=td
+            top=sorted(vip_balances.items(),key=lambda x:x[1],reverse=True)[:10]
+            rewards_given={}
+            for i,(u,b) in enumerate(top):
+                rw=REWARDS.get(i+1,0)
+                if rw>0: rewards_given[u]=rw
+            vip_balances.clear()
+            for u,rw in rewards_given.items():
+                vip_balances[u]=rw
+            pending_rewards.clear()
+            save()
+    except Exception as e: print("daily_rs loi",e,flush=True)
 @tasks.loop(minutes=1)
 async def check_tra():
     now=int(time.time()); ch=False
@@ -250,11 +253,13 @@ async def check_tra():
 
 @bot.event
 async def on_ready():
-    print("Online",bot.user,flush=True); await bot.tree.sync()
-    if not auto_bxh.is_running(): auto_bxh.start()
-    if not daily_rs.is_running(): daily_rs.start()
-    if not check_tra.is_running(): check_tra.start()
-    if not auto_ban_loop.is_running(): auto_ban_loop.start()
+    try:
+        print("Online",bot.user,flush=True); await bot.tree.sync()
+        if not auto_bxh.is_running(): auto_bxh.start()
+        if not daily_rs.is_running(): daily_rs.start()
+        if not check_tra.is_running(): check_tra.start()
+        if not auto_ban_loop.is_running(): auto_ban_loop.start()
+    except Exception: print("on_ready loi",traceback.format_exc(),flush=True)
 
 @bot.tree.command(name="datcuoc",description="Dat cuoc vao ban chung")
 @app_commands.autocomplete(tien=auto_tien)
@@ -375,5 +380,11 @@ async def bocam(interaction:discord.Interaction,nguoi:discord.Member):
     await interaction.response.send_message("Go ban "+nguoi.mention)
 
 if __name__=="__main__":
-    if not TOKEN: print("Thieu TOKEN",flush=True); sys.exit(1)
-    bot.run(TOKEN)
+    if not TOKEN:
+        print("Thieu TOKEN! Kiem tra Variables tren Railway co DISCORD_TOKEN hoac DISCORD_BOT_TOKEN chua.",flush=True)
+        sys.exit(1)
+    try:
+        bot.run(TOKEN)
+    except Exception:
+        print("BOT CRASH:",traceback.format_exc(),flush=True)
+        sys.exit(1)
